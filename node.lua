@@ -1,43 +1,38 @@
-local assert       = assert
-local ipairs       = ipairs
-local pairs        = pairs
-local rawget       = rawget
-local require      = require
-local setmetatable = setmetatable
-local type         = type
+local assert, ipairs, pairs, rawget, require, table, type, setmetatable
+    = assert, ipairs, pairs, rawget, require, table, type, setmetatable
 
 local M = {}
 local pbox, meta = {}, {}
-local node = require 'c-node' (pbox, meta)
+local node = require 'c-node.rawnode' (pbox, meta)
 
 local isnode           = node.isnode
 local utable           = node.utable
-local node_new         = node.new
+local node_raw         = node.raw
+local node_init        = node.init
+local node_setut       = node.setut
 local node_delete      = node.delete
 local node_append      = node.append
 local node_insert      = node.insert
 local node_setchildren = node.setchildren
 local node_removeself  = node.removeself
-local node_parent      = node.parent
-local node_prevsibling = node.prevsibling
-local node_nextsibling = node.nextsibling
-local node_firstchild  = node.firstchild
-local node_lastchild   = node.lastchild
-local node_firstleaf   = node.firstleaf
-local node_lastleaf    = node.lastleaf
-local node_prevleaf    = node.prevleaf
-local node_nextleaf    = node.nextleaf
+
+local function idx(self)
+    local parent = self.parent
+    if parent then return assert(utable(parent)[self]) end
+end
 
 local query_funcs = {
-    parent      = node_parent,
-    prevsibling = node_prevsibling,
-    nextsibling = node_nextsibling,
-    firstchild  = node_firstchild,
-    lastchild   = node_lastchild,
-    firstleaf   = node_firstleaf,
-    lastleaf    = node_lastleaf,
-    prevleaf    = node_prevleaf,
-    nextleaf    = node_nextleaf,
+    idx         = idx,
+    type        = node.type,
+    parent      = node.parent,
+    prevsibling = node.prevsibling,
+    nextsibling = node.nextsibling,
+    firstchild  = node.firstchild,
+    lastchild   = node.lastchild,
+    firstleaf   = node.firstleaf,
+    lastleaf    = node.lastleaf,
+    prevleaf    = node.prevleaf,
+    nextleaf    = node.nextleaf,
 }
 
 for k, v in pairs(query_funcs) do
@@ -54,12 +49,11 @@ function meta:__len()
 end
 
 function meta:__newindex(k, v)
-    local ut = utable(self)
     if type(k) ~= 'number' then
-        if not query_funcs[k] then 
-            return rawset(ut, k, v)
-        end
+        if not query_funcs[k] then node_setut(ut, k, v) end
+        return error("attempt set read-only field "..k)
     end
+    local ut = utable(self)
     if k == ut.n and not v then
         return M.delete(ut[k])
     end
@@ -106,8 +100,11 @@ local function remove_from_parent(node)
     end
 end
 
-function M.new(tbl)
-    local nobj = node_new(tbl)
+function M.new(func, tbl)
+    if not tbl then
+        func, tbl = node_raw, func
+    end
+    local nobj = node_init(func(), tbl)
     local children
     local last = 0
     for i, v in ipairs(tbl) do
@@ -178,11 +175,6 @@ function M:insertchild(newnode, idx)
     ut.n = n
     local nut = utable(newnode)
     nut.parent = self
-end
-
-function M:idx()
-    local parent = self.parent
-    if parent then return assert(utable(parent)[self]) end
 end
 
 return setmetatable(M, {__call = function(t, ...) return M.new(...) end})

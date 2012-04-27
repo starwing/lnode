@@ -95,9 +95,13 @@ ls_Node* ls_lastleaf(ls_Node *root) {
 }
 
 ls_Node* ls_prevleaf(ls_Node *self) {
-    if (self->parent && self->parent->children == self) /* first child */
-        return self->parent;
-    return ls_lastleaf(self->prev_sibling);
+    ls_Node *parent, *firstchild;
+    if ((parent = self->parent) && parent->children == self) /* first child */
+        return parent;
+    self = self->prev_sibling;
+    while ((firstchild = self->children))
+        self = firstchild->prev_sibling;
+    return self;
 }
 
 ls_Node* ls_nextleaf(ls_Node *self) {
@@ -115,22 +119,30 @@ ls_Node* ls_nextleaf(ls_Node *self) {
 #include <lua.h>
 #include <lauxlib.h>
 
-static int Lnew(lua_State *L) {
+static int Lraw(lua_State *L) {
+    int type = luaL_optint(L, 1, 0);
     struct ls_NodeWithPtr {
         ls_Node *p;
         ls_Node node;
     } *nwp = (struct ls_NodeWithPtr*)lua_newuserdata(L,
             sizeof(struct ls_NodeWithPtr));
     ls_Node *p = nwp->p = &nwp->node;
-    ls_initnode(p, 0);
+    ls_initnode(p, type);
+    return 1;
+}
+
+static int Linit(lua_State *L) {
+    ls_Node **p = (ls_Node**)lua_touserdata(L, 1);
+    if (p == NULL || *p == NULL) return 0;
     lua_pushvalue(L, lua_upvalueindex(2));
-    lua_setmetatable(L, -2);
-    lua_pushvalue(L, -1);
-    lua_rawsetp(L, lua_upvalueindex(1), p);
-    if (lua_istable(L, 1)) {
-        lua_pushvalue(L, 1);
-        lua_setuservalue(L, -2);
+    lua_setmetatable(L, 1);
+    lua_pushvalue(L, 1);
+    lua_rawsetp(L, lua_upvalueindex(1), (void*)*p);
+    if (lua_istable(L, 2)) {
+        lua_pushvalue(L, 2);
+        lua_setuservalue(L, 1);
     }
+    lua_settop(L, 1);
     return 1;
 }
 
@@ -174,6 +186,17 @@ static ls_Node *check_node(lua_State *L, int narg) {
     return *p;
 }
 
+static int Lsetut(lua_State *L) {
+    check_node(L, 1);
+    luaL_checkany(L, 2);
+    luaL_checkany(L, 3);
+    lua_getuservalue(L, 1);
+    lua_pushvalue(L, 2);
+    lua_pushvalue(L, 3);
+    lua_rawset(L, -3);
+    return 0;
+}
+
 static int Lutable(lua_State *L) {
     check_node(L, 1);
     lua_getuservalue(L, 1);
@@ -208,13 +231,7 @@ static int Linsert(lua_State *L) {
 
 static int Lsetchildren(lua_State *L) {
     ls_Node *node = check_node(L, 1);
-    if (!lua_isnil(L, 2)) {
-        ls_Node *newNode = check_node(L, 2);
-        ls_setchildren(node, newNode);
-    }
-    else {
-        ls_setchildren(node, NULL);
-    }
+    ls_setchildren(node, lua_isnil(L, 2) ? NULL : check_node(L, 2));
     lua_settop(L, 1);
     return 1;
 }
@@ -231,38 +248,39 @@ static int Ltype(lua_State *L) {
     return 1;
 }
 
-#define BIND_UNARG_FUNC(name) \
-    static int L##name(lua_State *L) {                              \
-        ls_Node *node = check_node(L, 1);                           \
-        ls_Node *result = ls_##name(node);                          \
-        if (result == NULL) {                                       \
-            lua_pushnil(L);                                         \
-            return 1;                                               \
-        }                                                           \
-        lua_rawgetp(L, lua_upvalueindex(1), result);                \
-        if (lua_isnil(L, -1)) {                                     \
-            ls_Node **node =                                        \
-                (ls_Node**)lua_newuserdata(L, sizeof(ls_Node*));    \
-            lua_remove(L, -2);                                      \
-            *node = result;                                         \
-            lua_pushvalue(L, lua_upvalueindex(2));                  \
-            lua_setmetatable(L, -2);                                \
-            lua_pushvalue(L, -1);                                   \
-            lua_rawsetp(L, lua_upvalueindex(1), result);            \
-        }                                                           \
-        return 1;                                                   \
+static int Lquery_impl(lua_State *L, ls_Node *(*f)(ls_Node*)) {
+    ls_Node *result = f(check_node(L, 1));
+    if (result == NULL) {
+        lua_pushnil(L);
+        return 1;
     }
-BIND_UNARG_FUNC(parent)
-BIND_UNARG_FUNC(prevsibling)
-BIND_UNARG_FUNC(nextsibling)
-BIND_UNARG_FUNC(firstchild)
-BIND_UNARG_FUNC(lastchild)
-BIND_UNARG_FUNC(root)
-BIND_UNARG_FUNC(firstleaf)
-BIND_UNARG_FUNC(lastleaf)
-BIND_UNARG_FUNC(prevleaf)
-BIND_UNARG_FUNC(nextleaf)
-#undef BIND_UNARG_FUNC
+    lua_rawgetp(L, lua_upvalueindex(1), result);
+    if (lua_isnil(L, -1)) {
+        lua_pop(L, 1);
+        *(ls_Node**)lua_newuserdata(L, sizeof(ls_Node*)) = result;
+        lua_pushvalue(L, lua_upvalueindex(2));
+        lua_setmetatable(L, -2);
+        lua_pushvalue(L, -1);
+        lua_rawsetp(L, lua_upvalueindex(1), result);
+    }
+    return 1;
+}
+
+#define QUERY_FUNCS(X) \
+    X(parent)      \
+    X(prevsibling) \
+    X(nextsibling) \
+    X(firstchild)  \
+    X(lastchild)   \
+    X(root)        \
+    X(firstleaf)   \
+    X(lastleaf)    \
+    X(prevleaf)    \
+    X(nextleaf)
+
+#define X(n) static int L##n(lua_State *L) { return Lquery_impl(L, ls_##n); }
+QUERY_FUNCS(X)
+#undef X
 
 static int Ltostring(lua_State *L) {
     ls_Node **p = test_node(L, 1);
@@ -275,29 +293,22 @@ static int Ltostring(lua_State *L) {
     return 1;
 }
 
-static int Linit(lua_State *L) {
+static int Linit_module(lua_State *L) {
     luaL_Reg nodelibs[] = {
-#define ENTRY(n) { #n, L##n }
-        ENTRY(new),
-        ENTRY(delete),
-        ENTRY(isnode),
-        ENTRY(utable),
-        ENTRY(append),
-        ENTRY(insert),
-        ENTRY(setchildren),
-        ENTRY(removeself),
-        ENTRY(type),
-        ENTRY(parent),
-        ENTRY(prevsibling),
-        ENTRY(nextsibling),
-        ENTRY(firstchild),
-        ENTRY(lastchild),
-        ENTRY(root),
-        ENTRY(firstleaf),
-        ENTRY(lastleaf),
-        ENTRY(prevleaf),
-        ENTRY(nextleaf),
-        ENTRY(tostring),
+#define ENTRY(n) { #n, L##n },
+        ENTRY(raw)
+        ENTRY(init)
+        ENTRY(delete)
+        ENTRY(isnode)
+        ENTRY(utable)
+        ENTRY(setut)
+        ENTRY(append)
+        ENTRY(insert)
+        ENTRY(setchildren)
+        ENTRY(removeself)
+        ENTRY(type)
+        ENTRY(tostring)
+        QUERY_FUNCS(ENTRY)
 #undef ENTRY
         { NULL, NULL }
     };
@@ -310,13 +321,14 @@ static int Linit(lua_State *L) {
     return 1;
 }
 
-LUALIB_API int luaopen_node(lua_State *L) {
-    lua_pushcfunction(L, Linit);
+LUALIB_API int luaopen_node_rawnode(lua_State *L) {
+    lua_pushcfunction(L, Linit_module);
     return 1;
 }
 #endif /* LS_EXPORT_NODE */
 /* 
- * cc: flags+='-s -O2 -mdll -pedantic -DLUA_BUILD_AS_DLL -IC:/lua52/include -DLS_EXPORT_NODE'
+ * cc: flags+='-s -O2 -mdll -pedantic -DLUA_BUILD_AS_DLL -Ic:/lua52/include'
+ * cc: flags+='-DLS_EXPORT_NODE -DLS_EXPORT_ATTR'
  * cc: libs+='c:/lua52/lua52.dll'
- * cc: output='c-node.dll'
+ * cc: input='*.c' output='c-node.dll'
  */
