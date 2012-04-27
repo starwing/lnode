@@ -327,8 +327,8 @@ LUALIB_API int luaopen_node_rawnode(lua_State *L) {
 }
 #endif /* LS_EXPORT_NODE */
 /* 
- * cc: flags+='-s -O2 -mdll -pedantic -DLUA_BUILD_AS_DLL -Ic:/lua52/include'
+ * cc: flags+='-s -O2 -mdll -pedantic -DLUA_BUILD_AS_DLL -Id:/lua52/include'
  * cc: flags+='-DLS_EXPORT_NODE -DLS_EXPORT_ATTR'
- * cc: libs+='c:/lua52/lua52.dll'
+ * cc: libs+='d:/lua52/lua52.dll'
  * cc: input='*.c' output='c-node.dll'
  */

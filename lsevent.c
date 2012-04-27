@@ -2,6 +2,11 @@
 
 #include <stddef.h>
 
+void ls_event_initnode(ls_EventNode *node, int type) {
+    ls_initnode(&node->node, type);
+    node->handlers = NULL;
+}
+
 void ls_event_inithandler(ls_EventHandler *handler, int eventid, ls_EventProc f, void *ud) {
     handler->eventid = eventid;
     handler->f = f;
