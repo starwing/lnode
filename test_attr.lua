@@ -21,3 +21,4 @@ for i = 1, 1000 do
     assert(not attr.fromstring(s))
     assert(not attr.tostring(math.random(255, 10000)))
 end
+print("test OK")

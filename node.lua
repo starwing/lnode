@@ -2,12 +2,14 @@ local assert, ipairs, pairs, rawget, require, table, type, setmetatable
     = assert, ipairs, pairs, rawget, require, table, type, setmetatable
 
 local M = {}
-local pbox, meta = {}, {}
-local node = require 'c-node.rawnode' (pbox, meta)
+local pbox = setmetatable({}, {__mode = "v"})
+local node_meta, evt_meta = {}, {}
+local node = require 'c-node.rawnode' (pbox, node_meta)
+local event = require 'c-node.event'  (pbox, evt_meta)
 
 local isnode           = node.isnode
 local utable           = node.utable
-local node_raw         = node.raw
+local node_rawnode     = node.rawnode
 local node_init        = node.init
 local node_setut       = node.setut
 local node_delete      = node.delete
@@ -15,6 +17,11 @@ local node_append      = node.append
 local node_insert      = node.insert
 local node_setchildren = node.setchildren
 local node_removeself  = node.removeself
+
+local event_new                = event.new
+local event_eventnode          = event.eventnode
+local event_addeventhandler    = event.addeventhandler
+local event_removeeventhandler = event.removeeventhandler
 
 local function idx(self)
     local parent = self.parent
@@ -39,16 +46,14 @@ for k, v in pairs(query_funcs) do
     M[k] = v
 end
 
-setmetatable(pbox, {__mode = "v"})
+node_meta.__tostring = node.tostring
+node_meta.__gc = node.delete
 
-meta.__tostring = node.tostring
-meta.__gc = node.delete
-
-function meta:__len()
+function node_meta:__len()
     return utable(self).n or 0
 end
 
-function meta:__newindex(k, v)
+function node_meta:__newindex(k, v)
     if type(k) ~= 'number' then
         if not query_funcs[k] then node_setut(ut, k, v) end
         return error("attempt set read-only field "..k)
@@ -66,7 +71,7 @@ function meta:__newindex(k, v)
     end
 end
 
-function meta:__index(k)
+function node_meta:__index(k)
     local ut = utable(self)
     local v = ut[k]
     if v then return v end
@@ -79,7 +84,7 @@ function meta:__index(k)
     return rawget(M, k)
 end
 
-function meta.__ipairs(node)
+function node_meta.__ipairs(node)
     return ipairs(utable(node))
 end
 
@@ -102,7 +107,7 @@ end
 
 function M.new(func, tbl)
     if not tbl then
-        func, tbl = node_raw, func
+        func, tbl = M.rawnode, func
     end
     local nobj = node_init(func(), tbl)
     local children
@@ -122,6 +127,12 @@ function M.new(func, tbl)
             tbl[k] = nil
         end
     end
+    return nobj
+end
+
+function M.rawnode()
+    local nobj = node_rawnode()
+    utable(nobj).type = "raw"
     return nobj
 end
 
