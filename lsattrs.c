@@ -30,6 +30,24 @@ int ls_attr_from_string(const char *s) {
     return -1;
 }
 
+int ls_attr_isevent(int attr) {
+    const char *s = ls_attr_event_string(attr);
+    return s ? attr : -1;
+}
+
+const char *ls_attr_event_string(int attr) {
+    const char *s = ls_attr_string(attr);
+    if (s && s[0] == 'o' && s[1] == 'n')
+        return s;
+    return NULL;
+}
+
+int ls_attr_event_fromstring(const char *s) {
+    char buff[32] = "on";
+    strncat(buff, s, 31);
+    return ls_attr_from_string(buff);
+}
+
 #ifdef LS_EXPORT_ATTR
 #define LUA_LIB
 #include <lua.h>
@@ -51,11 +69,44 @@ static int Lfromstring(lua_State *L) {
     return 1;
 }
 
+static int Lisevent(lua_State *L) {
+    switch (lua_type(L, 1)) {
+    case LUA_TNUMBER:
+        lua_pushboolean(L, ls_attr_isevent(lua_tointeger(L, 1)) >= 0);
+        return 1;
+    case LUA_TSTRING:
+        lua_pushboolean(L, ls_attr_event_fromstring(lua_tostring(L, 1)) >= 0);
+        return 1;
+    default:
+        lua_pushfstring(L, "number/string expected, got %s", luaL_typename(L, 1));
+        return luaL_argerror(L, 1, lua_tostring(L, -1));
+    }
+}
+
+static int Levent_fromstring(lua_State *L) {
+    const char *s = luaL_checkstring(L, 1);
+    int attr = ls_attr_event_fromstring(s);
+    if (attr >= 0)
+        lua_pushinteger(L, attr);
+    else
+        lua_pushnil(L);
+    return 1;
+}
+
+static int Levent_tostring(lua_State *L) {
+    int attr = luaL_checkint(L, 1);
+    lua_pushstring(L, ls_attr_event_string(attr));
+    return 1;
+}
+
 LUALIB_API int luaopen_node_attr(lua_State *L) {
     luaL_Reg attrlib[] = {
 #define ENTRY(n) { #n, L##n },
         ENTRY(tostring)
         ENTRY(fromstring)
+        ENTRY(isevent)
+        ENTRY(event_tostring)
+        ENTRY(event_fromstring)
 #undef  ENTRY
         { NULL, NULL }
     };

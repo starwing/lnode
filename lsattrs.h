@@ -71,5 +71,9 @@ enum ls_Attr {
 const char *ls_attr_string(int attr);
 int ls_attr_from_string(const char *s);
 
+int ls_attr_isevent(int attr);
+const char *ls_attr_event_string(int attr);
+int ls_attr_event_fromstring(const char *s);
+
 
 #endif /* lselem_h */
