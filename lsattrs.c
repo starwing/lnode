@@ -3,6 +3,43 @@
 #include <stddef.h>
 #include <string.h>
 
+static const char *ls_attr_errors[LS_ATTR_ERROR_NUM] = {
+#define X(a, b) b,
+    LS_ATTR_ERRORS(X)
+#undef  X
+};
+
+const char *ls_attr_strerror(ls_AttrError error) {
+    int i = (int)error;
+    if (i >= 0 && i < LS_ATTR_ERROR_NUM)
+        return ls_attr_errors[i];
+    return "unknown error";
+}
+
+ls_AttrError ls_attr_gets(ls_AttrHolder *holder, int attrid, ls_Writer f, void *ud) {
+    if (!holder->str_reader)
+        return LS_ATTR_ENOATTR;
+    return holder->str_reader(holder, attrid, f, ud);
+}
+
+ls_AttrError ls_attr_puts(ls_AttrHolder *holder, int attrid, ls_Reader f, void *ud) {
+    if (!holder->str_writer)
+        return LS_ATTR_ENOATTR;
+    return holder->str_writer(holder, attrid, f, ud);
+}
+
+ls_AttrError ls_attr_geti(ls_AttrHolder *holder, int attrid, long *pv) {
+    if (!holder->int_reader)
+        return LS_ATTR_ENOATTR;
+    return holder->int_reader(holder, attrid, pv);
+}
+
+ls_AttrError ls_attr_puti(ls_AttrHolder *holder, int attrid, long nv) {
+    if (!holder->int_reader)
+        return LS_ATTR_ENOATTR;
+    return holder->int_writer(holder, attrid, nv);
+}
+
 static const char *ls_attrs[LS_ATTR_NUM] = {
 #define X(a,b) a,
     LS_ATTRS(X)
@@ -78,8 +115,7 @@ static int Lisevent(lua_State *L) {
         lua_pushboolean(L, ls_attr_event_fromstring(lua_tostring(L, 1)) >= 0);
         return 1;
     default:
-        lua_pushfstring(L, "number/string expected, got %s", luaL_typename(L, 1));
-        return luaL_argerror(L, 1, lua_tostring(L, -1));
+        return 0;
     }
 }
 
@@ -99,7 +135,7 @@ static int Levent_tostring(lua_State *L) {
     return 1;
 }
 
-LUALIB_API int luaopen_node_attr(lua_State *L) {
+LUALIB_API int luaopen_node_attrs(lua_State *L) {
     luaL_Reg attrlib[] = {
 #define ENTRY(n) { #n, L##n },
         ENTRY(tostring)
@@ -116,13 +152,13 @@ LUALIB_API int luaopen_node_attr(lua_State *L) {
         lua_pushinteger(L, LSA_##b), lua_rawset(L, -4), lua_rawseti(L, -2, LSA_##b));
     LS_ATTRS(X)
 #undef  X
-    lua_setfield(L, -2, "attrs");
+    lua_setfield(L, -2, "constants");
     return 1;
 }
 #endif /* LS_EXPORT_ATTR */
-/* 
- * cc: flags+='-s -O2 -mdll -pedantic -DLUA_BUILD_AS_DLL -Id:/lua52/include'
- * cc: flags+='-DLS_EXPORT_NODE -DLS_EXPORT_ATTR'
+/*
+ * cc: flags+='-ggdb -O2 -mdll -pedantic -DLUA_BUILD_AS_DLL -Id:/lua52/include'
+ * cc: flags+='-DLS_EXPORT_NODE -DLS_EXPORT_ATTR -DLS_EXPORT_EVENT'
  * cc: libs+='d:/lua52/lua52.dll'
  * cc: input='*.c' output='c-node.dll'
  */

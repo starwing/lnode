@@ -6,22 +6,34 @@ local pbox = setmetatable({}, {__mode = "v"})
 local node_meta, evt_meta = {}, {}
 local node = require 'c-node.rawnode' (pbox, node_meta)
 local event = require 'c-node.event'  (pbox, evt_meta)
+local attrs = require 'c-node.attrs'
 
-local isnode           = node.isnode
-local utable           = node.utable
-local node_rawnode     = node.rawnode
-local node_init        = node.init
-local node_setut       = node.setut
-local node_delete      = node.delete
-local node_append      = node.append
-local node_insert      = node.insert
+local isnode       = node.isnode
+local utable       = node.utable
+local node_rawnode = node.rawnode
+local node_init    = node.init
+local node_setut   = node.setut
+local node_delete  = node.delete
+local node_append  = node.append
+local node_insert  = node.insert
 local node_setchildren = node.setchildren
 local node_removeself  = node.removeself
 
-local event_new                = event.new
-local event_eventnode          = event.eventnode
+local attrs_tostring   = attrs.tostring
+local attrs_fromstring = attrs.fromstring
+local attrs_isevent    = attrs.isevent
+local attrs_event_tostring   = attrs.event_tostring
+local attrs_event_fromstring = attrs.event_fromstring
+
+local event_new       = event.new
+local event_emit      = event.emit
+local event_eventnode = event.eventnode
 local event_addeventhandler    = event.addeventhandler
 local event_removeeventhandler = event.removeeventhandler
+
+setmetatable(attrs.constants, {__index = function(self, k)
+    error("unknown attribute: "..k)
+end})
 
 local function idx(self)
     local parent = self.parent
@@ -53,9 +65,34 @@ function node_meta:__len()
     return utable(self).n or 0
 end
 
+local function set_handler(self, evtid, func)
+    local ut = utable(self)
+    local handlers = ut.handlers
+    if not func and handlers then
+        handlers[evtid] = nil
+        return
+    end
+    if not handlers then
+        handlers = {}
+        ut.handlers = handlers
+    end
+    local handler = handlers[evtid]
+    if not handler then
+        handler = event_new(evtid)
+        handlers[evtid] = handler
+    end
+    event_setcallback(handler, func)
+end
+
 function node_meta:__newindex(k, v)
     if type(k) ~= 'number' then
-        if not query_funcs[k] then node_setut(ut, k, v) end
+        if not query_funcs[k] then
+            if type(k) == 'string' then
+                local evtid = attrs_event_fromstring(k)
+                if evtid then return set_handler(self, evtid, v) end
+            end
+            node_setut(ut, k, v)
+        end
         return error("attempt set read-only field "..k)
     end
     local ut = utable(self)
@@ -80,6 +117,16 @@ function node_meta:__index(k)
     if type(k) == 'number' and k < 0 then
         local v = ut[k + ut.n + 1]
         if v then return v end
+    end
+    if type(k) == 'string' then
+        local evtid = attrs_event_fromstring(k)
+        if evtid then
+            local handlers = ut.handlers
+            local handler = handlers and handlers[evtid]
+            if handler then
+                return event_callback(handler)
+            end
+        end
     end
     return rawget(M, k)
 end
@@ -186,6 +233,14 @@ function M:insertchild(newnode, idx)
     ut.n = n
     local nut = utable(newnode)
     nut.parent = self
+end
+
+function M:emit(evtid, evtdata)
+    if type(evtid) == 'string' then
+        evtid = attrs.constants[evtid]
+    end
+    assert(self.type == 'event')
+    event_emit(self, evtid, evtdata)
 end
 
 return setmetatable(M, {__call = function(t, ...) return M.new(...) end})

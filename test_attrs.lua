@@ -1,5 +1,5 @@
-local attr = require 'c-node.attr'
-for i, v in pairs(attr.attrs) do
+local attr = require 'c-node.attrs'
+for i, v in pairs(attr.constants) do
     if type(i) == 'number' then
         assert(attr.tostring(i) == v)
         assert(attr.fromstring(v) == i)
@@ -17,7 +17,7 @@ for i = 1, 1000 do
             t[#t+1] = string.char(math.random(255))
         end
         s = table.concat(t)
-    until not attr.attrs[s]
+    until not attr.constants[s]
     assert(not attr.fromstring(s))
     assert(not attr.tostring(math.random(255, 10000)))
 end
