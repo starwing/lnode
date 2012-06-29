@@ -2,26 +2,27 @@
 #define lsevent_h
 
 
+typedef struct ls_EventSignal ls_EventSignal;
 typedef struct ls_EventSlot ls_EventSlot;
-typedef struct ls_EventHandler ls_EventHandler;
-typedef void (*ls_EventProc)(void *ud, void *evtdata, ls_EventSlot *slot, ls_EventHandler *self);
+typedef void (*ls_EventHandler)(void *ud, void *evtdata, ls_EventSignal *signal, ls_EventSlot *self);
+
+struct ls_EventSignal {
+    ls_EventSlot *slots;
+};
 
 struct ls_EventSlot {
-    ls_EventHandler *handlers;
-};
-
-struct ls_EventHandler {
+    ls_EventSlot *next, *prev;
     int eventid;
-    ls_EventProc f;
+    ls_EventHandler f;
     void *ud;
-    ls_EventSlot *slot;
-    ls_EventHandler *prev, *next;
+    ls_EventSignal *signal;
 };
 
-void ls_event_inithandler   (ls_EventHandler *handler, int eventid, ls_EventProc f, void *ud);
-void ls_event_removehandler (ls_EventHandler *handler);
-void ls_event_emit          (ls_EventSlot *slot, int eventid, void *evtdata);
-void ls_event_addhandler    (ls_EventSlot *slot, ls_EventHandler *newh);
+void ls_event_initsignal (ls_EventSignal *signal);
+void ls_event_initslot   (ls_EventSlot *slot, int eventid, ls_EventHandler f, void *ud);
+void ls_event_connect    (ls_EventSignal *signal, ls_EventSlot *newh);
+void ls_event_disconnect (ls_EventSlot *slot);
+void ls_event_emit       (ls_EventSignal *signal, int eventid, void *evtdata);
 
 
 #endif /* lsevent_h */

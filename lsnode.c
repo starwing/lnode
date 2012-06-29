@@ -121,27 +121,6 @@ ls_Node* ls_nextleaf(ls_Node *self) {
 
 #include "lsexport.h"
 
-void **lsL_testudata_uv(lua_State *L, int narg) {
-    void **p = (void**)lua_touserdata(L, narg);
-    if (p == NULL) return NULL;
-    lua_getmetatable(L, narg);
-    if (!lua_rawequal(L, -1, lua_upvalueindex(2)))
-        p = NULL;
-    lua_pop(L, 1);
-    return p;
-}
-
-void *lsL_checkudata(lua_State *L, int narg, void **p) {
-    if (p == NULL) {
-        void **p = (void**)lua_touserdata(L, narg);
-        if (p && *p == NULL)
-            luaL_argerror(L, narg, "node expected, got null node");
-        lua_pushfstring(L, "node expected, got %s", luaL_typename(L, narg));
-        luaL_argerror(L, narg, lua_tostring(L, -1));
-    }
-    return *p;
-}
-
 static int Lrawnode(lua_State *L) {
     int type = luaL_optint(L, 1, 0);
     struct ls_NodeWithPtr {
@@ -155,26 +134,15 @@ static int Lrawnode(lua_State *L) {
 }
 
 static int Linit(lua_State *L) {
-    ls_Node **p = (ls_Node**)lua_touserdata(L, 1);
-    if (p == NULL || *p == NULL) return 0;
-    lua_pushvalue(L, lua_upvalueindex(2));
-    lua_setmetatable(L, 1);
-    lua_pushvalue(L, 1);
-    lua_rawsetp(L, lua_upvalueindex(1), (void*)*p);
-    if (lua_istable(L, 2)) {
-        lua_pushvalue(L, 2);
-        lua_setuservalue(L, 1);
-    }
-    lua_settop(L, 1);
-    return 1;
+    lua_settop(L, 2);
+    return lsL_initudata_uv(L, 1, 2);
 }
 
-static ls_Node *checknode(lua_State *L, int narg) {
-    return (ls_Node*)lsL_checkudata(L, narg, lsL_testudata_uv(L, narg));
-}
+#define testnode(L, n) ((ls_Node**)lsL_testudata_uv(L, n, 2))
+#define checknode(L, n) ((ls_Node*)lsL_checkudata(L, n, lsL_testudata_uv(L, n, 2)))
 
 static int Ldelete(lua_State *L) {
-    ls_Node **p = (ls_Node**)lsL_testudata_uv(L, 1);
+    ls_Node **p = testnode(L, 1);
     if (p && *p) {
         ls_removeself(*p);
         *p = NULL;
@@ -187,12 +155,13 @@ static int Ldelete(lua_State *L) {
 }
 
 static int Lisnode(lua_State *L) {
-    lua_pushboolean(L, lsL_testudata_uv(L, 1) != NULL);
+    lua_pushboolean(L, testnode(L, 1) != NULL);
     return 1;
 }
 
 static int Lsetut(lua_State *L) {
-    checknode(L, 1);
+    /*(void)checknode(L, 1);*/
+    if (lua_touserdata(L, 1) == NULL) return 0;
     luaL_checkany(L, 2);
     luaL_checkany(L, 3);
     lua_getuservalue(L, 1);
@@ -203,7 +172,8 @@ static int Lsetut(lua_State *L) {
 }
 
 static int Lutable(lua_State *L) {
-    checknode(L, 1);
+    if (lua_touserdata(L, 1) == NULL) return 0;
+    /*(void)checknode(L, 1);*/
     lua_getuservalue(L, 1);
     if (lua_isnil(L, -1)) {
         lua_pop(L, 1);
@@ -253,7 +223,7 @@ static int Ltype(lua_State *L) {
     return 1;
 }
 
-void lsL_getnodeud(lua_State *L, ls_Node *node) {
+static void getnode(lua_State *L, ls_Node *node) {
     lua_rawgetp(L, lua_upvalueindex(1), (void*)node);
     if (lua_isnil(L, -1)) {
         lua_pop(L, 1);
@@ -271,7 +241,7 @@ static int Lquery_impl(lua_State *L, ls_Node *(*f)(ls_Node*)) {
         lua_pushnil(L);
         return 1;
     }
-    lsL_getnodeud(L, result);
+    getnode(L, result);
     return 1;
 }
 
@@ -292,14 +262,7 @@ QUERY_FUNCS(X)
 #undef X
 
 static int Ltostring(lua_State *L) {
-    ls_Node **p = (ls_Node**)lsL_testudata_uv(L, 1);
-    if (!p)
-        lua_pushstring(L, lua_tostring(L, 1));
-    else if (*p)
-        lua_pushfstring(L, "node: %p", *p);
-    else
-        lua_pushstring(L, "(null node)");
-    return 1;
+    return lsL_tostring(L, (void**)testnode(L, 1), LS_NODE_TYPE);
 }
 
 static int Linit_module(lua_State *L) {
@@ -321,7 +284,13 @@ static int Linit_module(lua_State *L) {
 #undef  ENTRY
         { NULL, NULL }
     };
-    return LS_INIT_MODULE(NODE, nodelibs);
+    lsL_ensuretop(L, 2, "(pbox, metatable) expected");
+    lsL_setregistry(L, 1, LS_NODE_PBOX);
+    lsL_setregistry(L, 2, LS_NODE_TYPE);
+    lua_newtable(L);
+    lua_insert(L, 1);
+    luaL_setfuncs(L, nodelibs, 2);
+    return 1;
 }
 
 LUALIB_API int luaopen_node_rawnode(lua_State *L) {
