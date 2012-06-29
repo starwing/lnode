@@ -1,6 +1,7 @@
 #include "lsevent.h"
 
 
+#include <assert.h>
 #include <stddef.h>
 
 
@@ -8,11 +9,10 @@ void ls_event_initsignal(ls_EventSignal *signal) {
     signal->slots = NULL;
 }
 
-void ls_event_initslot(ls_EventSlot *slot, int eventid, ls_EventHandler f, void *ud) {
+void ls_event_initslot(ls_EventSlot *slot, int eventid, ls_EventHandler *f) {
     slot->prev = slot->next = slot;
     slot->eventid = eventid;
     slot->f = f;
-    slot->ud = ud;
     slot->signal = NULL;
 }
 
@@ -51,10 +51,11 @@ void ls_event_emit(ls_EventSignal *signal, int eventid, void *evtdata) {
     if ((slot = signal->slots)) {
         do {
             next = slot->next;
+            assert(slot->signal == signal);
             if (slot->eventid == eventid) {
                 if (firstmatch == NULL)
                     firstmatch = slot;
-                slot->f(slot->ud, evtdata, signal, slot);
+                slot->f(slot, evtdata);
             }
         } while ((slot = next) != signal->slots);
         signal->slots = firstmatch;
