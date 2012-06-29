@@ -1,5 +1,5 @@
-#ifndef lselem_h
-#define lselem_h
+#ifndef lsattrs_h
+#define lsattrs_h
 
 
 #include <stddef.h>
@@ -38,27 +38,11 @@ struct ls_AttrHolder {
 
 
 const char *ls_attr_strerror(ls_AttrError error);
+
 ls_AttrError ls_attr_gets (ls_AttrHolder *holder, int attrid, ls_Writer f, void *ud);
-ls_AttrError ls_attr_puts (ls_AttrHolder *holder, int attrid, ls_Reader f, void *ud);
+ls_AttrError ls_attr_sets (ls_AttrHolder *holder, int attrid, ls_Reader f, void *ud);
 ls_AttrError ls_attr_geti (ls_AttrHolder *holder, int attrid, long *pv);
-ls_AttrError ls_attr_puti (ls_AttrHolder *holder, int attrid, long  nv);
+ls_AttrError ls_attr_seti (ls_AttrHolder *holder, int attrid, long  nv);
 
 
-#include "lsattrlist.h"
-
-enum ls_Attr {
-#define X(a,b) LSA_##b,
-    LS_ATTRS(X)
-#undef X
-    LS_ATTR_NUM
-};
-
-const char *ls_attr_string      (int attr);
-int         ls_attr_from_string (const char *s);
-
-int         ls_attr_isevent          (int attr);
-const char *ls_attr_event_string     (int attr);
-int         ls_attr_event_fromstring (const char *s);
-
-
-#endif /* lselem_h */
+#endif /* lsattrs_h */
