@@ -19,9 +19,11 @@ struct ls_EventSlot {
 
 void ls_event_initsignal (ls_EventSignal *signal);
 void ls_event_initslot   (ls_EventSlot *slot, int eventid, ls_EventHandler *f);
+void ls_event_reset      (ls_EventSignal *signal);
 void ls_event_connect    (ls_EventSignal *signal, ls_EventSlot *newh);
 void ls_event_disconnect (ls_EventSlot *slot);
 void ls_event_emit       (ls_EventSignal *signal, int eventid, void *evtdata);
+void ls_event_slots      (ls_EventSignal *signal, ls_EventHandler *f, void *evtdata);
 
 
 #endif /* lsevent_h */

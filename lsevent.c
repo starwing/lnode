@@ -16,6 +16,19 @@ void ls_event_initslot(ls_EventSlot *slot, int eventid, ls_EventHandler *f) {
     slot->signal = NULL;
 }
 
+void ls_event_reset(ls_EventSignal *signal) {
+    ls_EventSlot *slot, *next;
+    if ((slot = signal->slots) != NULL) {
+        do {
+            next = slot->next;
+            assert(slot->signal == signal);
+            slot->prev = slot->next = slot;
+            slot->signal = NULL;
+        } while ((slot = next) != signal->slots);
+        signal->slots = NULL;
+    }
+}
+
 void ls_event_connect(ls_EventSignal *signal, ls_EventSlot *slot) {
     if (slot->signal != NULL)
         ls_event_disconnect(slot);
@@ -62,3 +75,15 @@ void ls_event_emit(ls_EventSignal *signal, int eventid, void *evtdata) {
     }
 }
 
+void ls_event_slots(ls_EventSignal *signal, ls_EventHandler *f, void *evtdata) {
+    ls_EventSlot *slot, *next;
+    assert(f != NULL);
+    if ((slot = signal->slots) != NULL) {
+        do {
+            next = slot->next;
+            assert(slot->signal == signal);
+            f(slot, evtdata);
+        } while ((slot = next) != signal->slots);
+        signal->slots = NULL;
+    }
+}

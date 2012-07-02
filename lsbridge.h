@@ -19,11 +19,14 @@ ls_LuaEventSlot *lsL_event_new (lua_State *L, size_t slotsize);
 ls_Node      *lsL_node (ls_LuaNode *node);
 ls_EventSlot *lsL_slot (ls_LuaEventSlot *event);
 
-void lsL_event_register (lua_State *L, ls_EventSignal *signal);
-void lsL_attrs_register (lua_State *L, ls_AttrHolder *holder);
+void lsL_event_register   (lua_State *L, ls_EventSignal *signal);
+void lsL_event_unregister (lua_State *L, ls_EventSignal *signal);
+void lsL_attrs_register   (lua_State *L, ls_AttrHolder *holder);
+void lsL_attrs_unregister (lua_State *L, ls_AttrHolder *holder);
 
 int  lsL_get_attrs_table (lua_State *L, ls_AttrHolder *holder);
 void lsL_set_attrs_table (lua_State *L, int idx, ls_AttrHolder *holder);
 
+LUALIB_API int luaopen_bridge(lua_State *L);
 
 #endif /* lsbridge_h */

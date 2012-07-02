@@ -103,20 +103,25 @@ LB_API int lbind_getmetatable (lua_State *L, const lbind_Type *t);
 /* lbind type system */
 LB_API const char *lbind_tolstring (lua_State *L, int idx, size_t *plen);
 LB_API const char *lbind_type      (lua_State *L, int ud);
-LB_API int         lbind_isa       (lua_State *L, int ud, const lbind_Type *t);
-LB_API void       *lbind_cast      (lua_State *L, int ud, const lbind_Type *t);
+
+LB_API int   lbind_isa   (lua_State *L, int ud, const lbind_Type *t);
+LB_API void  lbind_copy  (lua_State *L, const void *p, const lbind_Type *t);
+LB_API void *lbind_cast  (lua_State *L, int ud, const lbind_Type *t);
+LB_API void *lbind_check (lua_State *L, int idx, const lbind_Type *t);
+LB_API void *lbind_test  (lua_State *L, int idx, const lbind_Type *t);
 
 #define lbind_tostring(L,idx) lbind_tolstring((L),(idx),NULL)
 
 /* lbind object maintain */
+LB_API void *lbind_raw      (lua_State *L, size_t objsize);
+LB_API void *lbind_object   (lua_State *L, int idx);
+LB_API int   lbind_retrieve (lua_State *L, const void *p);
+
 LB_API void *lbind_new        (lua_State *L, size_t objsize, const lbind_Type *t);
 LB_API void  lbind_register   (lua_State *L, const void *p, const lbind_Type *t);
 LB_API void *lbind_unregister (lua_State *L, int idx);
-LB_API int   lbind_retrieve   (lua_State *L, const void *p);
-LB_API void  lbind_copy       (lua_State *L, const void *p, const lbind_Type *t);
-LB_API void *lbind_test       (lua_State *L, int idx, const lbind_Type *t);
-LB_API void *lbind_check      (lua_State *L, int idx, const lbind_Type *t);
-LB_API void *lbind_isobject   (lua_State *L, int idx);
+
+
 
 #define lbind_optobject(L,ud,defs,t) \
     (lua_isnoneornil((L),(ud)) ? (defs) : lbind_check((L),(ud),(t)))
