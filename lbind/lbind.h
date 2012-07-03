@@ -145,17 +145,18 @@ typedef struct lbind_Enum {
     lbind_EnumItem *enums;
 } lbind_Enum;
 
-/* lbind_Enum flags */
-LB_API int lbind_setcombine (lua_State *L, int combine, lbind_Enum *et);
 
 LB_API void lbind_initenum  (lua_State *L, const char *name, lbind_EnumItem *enums, lbind_Enum *et);
-LB_API int  lbind_testname  (lua_State *L, int idx, lbind_Enum *et);
-LB_API int  lbind_addname   (lua_State *L, int idx, lbind_Enum *et);
-LB_API void lbind_addenums  (lua_State *L, lbind_EnumItem *enums, lbind_Enum *et);
-LB_API int  lbind_isenum    (lua_State *L, int idx, lbind_Enum *et);
-LB_API void lbind_pushenum  (lua_State *L, int evalue, lbind_Enum *et);
-LB_API int  lbind_toenum    (lua_State *L, int idx, lbind_Enum *et);
-LB_API int  lbind_checkenum (lua_State *L, int idx, lbind_Enum *et);
+LB_API int  lbind_addenum   (lua_State *L, int idx, lbind_Enum *et);
+LB_API int  lbind_addenums  (lua_State *L, lbind_EnumItem *enums, lbind_Enum *et);
+
+LB_API int lbind_pushenum  (lua_State *L, const char *name, lbind_Enum *et);
+LB_API int lbind_testenum  (lua_State *L, int idx, lbind_Enum *et);
+LB_API int lbind_checkenum (lua_State *L, int idx, lbind_Enum *et);
+
+LB_API int lbind_pushmask  (lua_State *L, int evalue, lbind_Enum *et);
+LB_API int lbind_testmask  (lua_State *L, int idx, lbind_Enum *et);
+LB_API int lbind_checkmask (lua_State *L, int idx, lbind_Enum *et);
 
 #define lbind_optenum(L,idx,defs,t) \
     (lua_isnoneornil((L),(idx)) ? (defs) : lbind_checkenum((L),(idx),(t)))

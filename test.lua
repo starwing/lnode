@@ -15,6 +15,7 @@ signal2:connect(f)
 print "signal"
 signal1(1)
 signal1("abc", "abc")
+print(pcall(signal1, "def", "abc"))
 signal2(2)
 print "signal"
 signal1:disconnect(f)

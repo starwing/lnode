@@ -176,7 +176,7 @@ static int enumcall_helper(lua_State *L) {
     lua_rawget(L, -2); /* 2->2 */
     if ((et = (lbind_Enum*)lua_touserdata(L, -1)) == NULL)
         return 0;
-    lua_pushinteger(L, lbind_checkenum(L, 2, et));
+    lua_pushinteger(L, lbind_checkmask(L, 2, et));
     return 1;
 }
 
@@ -718,7 +718,7 @@ static int parse_ident(lua_State *L, const char *p, int *value) {
     }
 }
 
-static int parse_enum(lua_State *L, const char *s, int *penum, int check) {
+static int parse_mask(lua_State *L, const char *s, int *penum, int check) {
     *penum = 0;
     while (*s != '\0') {
         int evalue;
@@ -749,37 +749,46 @@ static int parse_enum(lua_State *L, const char *s, int *penum, int check) {
 
 /* lbind enum maintain */
 
-#define LBE_COMBINE        1
-
-int lbind_setcombine (lua_State *L, int combine, lbind_Enum *et) {
-    return base_setflags(&et->base, LBE_COMBINE, combine);
-}
-
-int lbind_isenum(lua_State *L, int idx, lbind_Enum *et) {
-    return lua_isnumber(L, idx) || lua_isstring(L, idx);
-}
-
-void lbind_pushenum(lua_State *L, int evalue, lbind_Enum *et) {
+int lbind_pushmask(lua_State *L, int evalue, lbind_Enum *et) {
     lua_pushinteger(L, evalue);
+    return evalue;
 }
 
-static int toenum(lua_State *L, int idx, lbind_Enum *et, int check) {
+int lbind_pushenum(lua_State *L, const char *name, lbind_Enum *et) {
+    int res;
+    lua_rawgetp(L, LUA_REGISTRYINDEX, et); /* 1 */
+    lua_pushstring(L, name); /* 2 */
+    lua_pushvalue(L, -1); /* 2->3 */
+    lua_rawget(L, -3); /* 3->3 */
+    lua_remove(L, -2); /* (1) */
+    if ((res = lua_tonumber(L, -1)) == 0 && !lua_isnumber(L, -1)) {
+        lua_pop(L, 1); /* (3) */
+        return -1;
+    }
+    lua_remove(L, -2); /* (2) */
+    return res;
+}
+
+static int toenum(lua_State *L, int idx, lbind_Enum *et, int mask, int check) {
     const char *str;
     int value = lua_tointeger(L, idx);
     if (value != 0 || lua_isnumber(L, idx))
         return value;
     if ((str = lua_tostring(L, idx)) != NULL) {
         int success;
+        idx = lua_absindex(L, idx);
         lua_rawgetp(L, LUA_REGISTRYINDEX, et); /* 1 */
-        if (et->base.flags & LBE_COMBINE)
-            success = parse_enum(L, str, &value, check);
+        if (mask)
+            success = parse_mask(L, str, &value, check);
         else {
-            idx = lua_absindex(L, idx);
             lua_pushvalue(L, idx); /* idx->2 */
             lua_rawget(L, -2); /* 2->2 */
             success = (value = lua_tonumber(L, -1)) != 0 || lua_isnumber(L, -1);
+            lua_pop(L, 1); /* (2) */
+            if (check && !success)
+                return luaL_error(L, "'%s' is not valid %s", str, et->base.name);
         }
-        lua_pop(L, 1); /* (2) */
+        lua_pop(L, 1); /* (1) */
         if (success)
             return value;
     }
@@ -788,12 +797,33 @@ static int toenum(lua_State *L, int idx, lbind_Enum *et, int check) {
     return -1;
 }
 
-int lbind_toenum(lua_State *L, int idx, lbind_Enum *et) {
-    return toenum(L, idx, et, 0);
+int lbind_testmask(lua_State *L, int idx, lbind_Enum *et) {
+    return toenum(L, idx, et, 1, 0);
+}
+
+int lbind_checkmask(lua_State *L, int idx, lbind_Enum *et) {
+    return toenum(L, idx, et, 1, 1);
+}
+
+int lbind_testenum(lua_State *L, int idx, lbind_Enum *et) {
+    return toenum(L, idx, et, 0, 0);
 }
 
 int lbind_checkenum(lua_State *L, int idx, lbind_Enum *et) {
-    return toenum(L, idx, et, 1);
+    return toenum(L, idx, et, 0, 1);
+}
+
+int lbind_addenum(lua_State *L, int idx, lbind_Enum *et) {
+    if (lua_isstring(L, idx)) {
+        idx = lua_absindex(L, idx);
+        lua_rawgetp(L, LUA_REGISTRYINDEX, et); /* 1 */
+        lua_pushvalue(L, idx); /* 2 */
+        lua_pushinteger(L, ++et->lastn); /* 3 */
+        lua_rawset(L, -3); /* 2,3->1 */
+        lua_pop(L, 1); /* (1) */
+        return et->lastn;
+    }
+    return -1;
 }
 
 static void addenums(lua_State *L, lbind_EnumItem *enums, lbind_Enum *et) {
@@ -807,37 +837,11 @@ static void addenums(lua_State *L, lbind_EnumItem *enums, lbind_Enum *et) {
     }
 }
 
-void lbind_addenums(lua_State *L, lbind_EnumItem *enums, lbind_Enum *et) {
+int lbind_addenums(lua_State *L, lbind_EnumItem *enums, lbind_Enum *et) {
     lua_rawgetp(L, LUA_REGISTRYINDEX, et); /* 1 */
     addenums(L, enums, et);
     lua_pop(L, 1); /* (1) */
-}
-
-int lbind_addname(lua_State *L, int idx, lbind_Enum *et) {
-    if (lua_isstring(L, idx)) {
-        idx = lua_absindex(L, idx);
-        lua_rawgetp(L, LUA_REGISTRYINDEX, et); /* 1 */
-        lua_pushvalue(L, idx); /* 2 */
-        lua_pushinteger(L, ++et->lastn); /* 3 */
-        lua_rawset(L, -3); /* 2,3->1 */
-        lua_pop(L, 1); /* (1) */
-        return et->lastn;
-    }
-    return -1;
-}
-
-int lbind_testname(lua_State *L, int idx, lbind_Enum *et) {
-    int res = -1;
-    if (lua_isstring(L, idx)) {
-        idx = lua_absindex(L, idx);
-        lua_rawgetp(L, LUA_REGISTRYINDEX, et); /* 1 */
-        lua_pushvalue(L, idx); /* 2 */
-        lua_rawget(L, -2); /* 2->2 */
-        if ((res = lua_tonumber(L, -1)) == 0 && !lua_isnumber(L, -1))
-            res = -1;
-        lua_pop(L, 2); /* (2)(1) */
-    }
-    return res;
+    return et->lastn;
 }
 
 void lbind_initenum(lua_State *L, const char *name, lbind_EnumItem *enums, lbind_Enum *et) {
@@ -1129,17 +1133,17 @@ static int Lbases(lua_State *L) {
     return 0;
 }
 
-static int Lenum(lua_State *L) {
+static int Lmask(lua_State *L) {
     get_typeptr(L);
     if (lua_islightuserdata(L, -1)) {
         int value, first = 1;
         luaL_Buffer b;
         lbind_EnumItem *ei;
         lbind_Enum *et = (lbind_Enum*)lua_touserdata(L, -1);
-        if (!is_type(L, et, 'e') || (et->base.flags & LBE_COMBINE) == 0)
+        if (!is_type(L, et, 'e'))
             return 0;
         lua_pop(L, 1); /* pop enum table from is_type */
-        value = lbind_checkenum(L, -2, et);
+        value = lbind_checkmask(L, -2, et);
         luaL_buffinit(L, &b);
         for (ei = et->enums; ei->name != NULL; ++ei) {
             if ((ei->value & value) == value) {
@@ -1163,7 +1167,7 @@ int luaopen_lbind(lua_State *L) {
         ENTRY(bases),
         ENTRY(cast),
         ENTRY(delete),
-        ENTRY(enum),
+        ENTRY(mask),
         ENTRY(info),
         ENTRY(isa),
         ENTRY(methods),

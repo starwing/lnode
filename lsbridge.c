@@ -56,8 +56,8 @@ typedef struct {
 
 static int name2evtid(lua_State *L, int idx) {
     int evtid;
-    if ((evtid = lbind_testname(L, idx, &lbE_EventNames)) == -1)
-        evtid = lbind_addname(L, idx, &lbE_EventNames);
+    if ((evtid = lbind_testenum(L, idx, &lbE_EventNames)) == -1)
+        evtid = lbind_addenum(L, idx, &lbE_EventNames);
     return evtid;
 }
 
@@ -77,7 +77,7 @@ static void event_handler(ls_EventSlot *slot, void *evtdata) {
 static void default_evtname(lua_State *L) {
     if (lua_type(L, 2) != LUA_TSTRING) {
         luaL_checkany(L, 2);
-        lua_pushstring(L, "default");
+        lbind_pushenum(L, "default", &lbE_EventNames);
         lua_insert(L, 2);
     }
     luaL_checkany(L, 3);
@@ -102,7 +102,7 @@ static int Levent_disconnect(lua_State *L) {
     default_evtname(L);
     lua_getuservalue(L, 1); /* 1 */
     if (!lua_isnil(L, -1)) {
-        int evtid = name2evtid(L, 2);
+        int evtid = lbind_checkenum(L, 2, &lbE_EventNames);
         lua_pushnil(L); /* 2 */
         while (lua_next(L, -2)) { /* 2->2,3 */
             if (lua_rawequal(L, 3, -1)) {
@@ -124,15 +124,21 @@ static int Levent_disconnect(lua_State *L) {
 
 static int Levent_emit(lua_State *L) {
     ls_EventSignal *signal = lbind_check(L, 1, &lbT_EventSignal);
-    int top;
+    int evtid, top;
     default_evtname(L);
+    evtid = lbind_checkenum(L, 2, &lbE_EventNames);
     top = lua_gettop(L);
     Levent_Ctx ctx = { L, top - 2 };
-    ls_event_emit(signal, name2evtid(L, 2), (void*)&ctx);
+    ls_event_emit(signal, evtid, (void*)&ctx);
     return 0;
 }
 
 /* attrs exported functions */
+
+lbind_EnumItem event_names[] = {
+    { "default", 1 },
+    { NULL, 0 },
+};
 
 LUALIB_API int luaopen_node(lua_State *L);
 
@@ -151,11 +157,7 @@ LUALIB_API int luaopen_event(lua_State *L) {
         { "__call", Levent_emit },
         { NULL, NULL }
     };
-    lbind_EnumItem event_names[] = {
-        { "default", 1 },
-        { NULL, 0 },
-    };
-    lbind_newenum(L, "event-names", event_names, &lbE_EventNames);
+    lbind_newenum(L, "event name", event_names, &lbE_EventNames);
     lbind_newclass_meta(L, "event", libs, NULL, &lbT_EventSignal);
     return 1;
 }
