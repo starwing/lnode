@@ -21,6 +21,9 @@ ls_EventSlot *lsL_slot (ls_LuaEventSlot *event);
 
 void lsL_event_register   (lua_State *L, ls_EventSignal *signal);
 void lsL_event_unregister (lua_State *L, ls_EventSignal *signal);
+
+int lsL_event_emit (lua_State *L, ls_EventSignal *signal, int evtid, int args);
+
 void lsL_attrs_register   (lua_State *L, ls_AttrHolder *holder);
 void lsL_attrs_unregister (lua_State *L, ls_AttrHolder *holder);
 
