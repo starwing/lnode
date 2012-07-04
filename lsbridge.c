@@ -10,6 +10,73 @@ LBLIB_API lbind_Enum lbE_EventNames;
 
 /* node exported functions */
 
+static int Lnode_type(lua_State *L) {
+    ls_Node *node = (ls_Node*)lbind_check(L, 1, &lbT_Node);
+    lua_pushinteger(L, ls_type(node));
+    return 1;
+}
+
+#define GETTER_FUNC(name) \
+    static int Lnode_##name(lua_State *L) { \
+        ls_Node *node = (ls_Node*)lbind_check(L, 1, &lbT_Node); \
+        return lbind_retrieve(L, ls_##name(node)); \
+    }
+
+GETTER_FUNC(parent)
+GETTER_FUNC(prevsibling)
+GETTER_FUNC(nextsibling)
+GETTER_FUNC(firstchild)
+GETTER_FUNC(lastchild)
+GETTER_FUNC(root)
+GETTER_FUNC(firstleaf)
+GETTER_FUNC(lastleaf)
+GETTER_FUNC(prevleaf)
+GETTER_FUNC(nextleaf)
+
+#undef GETTER_FUNC
+
+static int Lnode_append(lua_State *L) {
+    ls_Node *node = (ls_Node*)lbind_check(L, 1, &lbT_Node);
+    int i, top = lua_gettop(L);
+    for (i = 2; i <= top; ++i) {
+        ls_Node *newnode = (ls_Node*)lbind_check(L, i, &lbT_Node);
+        ls_append(node, newnode);
+    }
+    lua_settop(L, 1);
+    return 1;
+}
+
+static int Lnode_insert(lua_State *L) {
+    ls_Node *node = (ls_Node*)lbind_check(L, 1, &lbT_Node);
+    int i, top = lua_gettop(L);
+    for (i = 2; i <= top; ++i) {
+        ls_Node *newnode = (ls_Node*)lbind_check(L, i, &lbT_Node);
+        ls_insert(node, newnode);
+    }
+    lua_settop(L, 1);
+    return 1;
+}
+
+static int Lnode_setchildren(lua_State *L) {
+    ls_Node *node = (ls_Node*)lbind_check(L, 1, &lbT_Node);
+    ls_Node *children = (ls_Node*)lbind_check(L, 2, &lbT_Node);
+    ls_setchildren(node, children);
+    lua_settop(L, 1);
+    return 1;
+}
+
+static int Lnode_removeself(lua_State *L) {
+    ls_Node *node = (ls_Node*)lbind_check(L, 1, &lbT_Node);
+    ls_removeself(node);
+    lua_settop(L, 1);
+    return 1;
+}
+
+static int Lnode___len(lua_State *L) { return 0; }
+static int Lnode___ipairs(lua_State *L) { return 0; }
+static int Lnode___pairs(lua_State *L) { return 0; }
+
+
 /* event exported functions */
  
 typedef struct {
@@ -183,7 +250,38 @@ lbind_EnumItem event_names[] = {
     { NULL, 0 },
 };
 
-LUALIB_API int luaopen_node(lua_State *L);
+LUALIB_API int luaopen_node(lua_State *L) {
+    luaL_Reg libs_getter[] = {
+#define ENTRY(n) { #n, Lnode_##n }
+        ENTRY(type),
+        ENTRY(parent),
+        ENTRY(prevsibling),
+        ENTRY(nextsibling),
+        ENTRY(firstchild),
+        ENTRY(lastchild),
+        ENTRY(root),
+        ENTRY(firstleaf),
+        ENTRY(lastleaf),
+        ENTRY(prevleaf),
+        ENTRY(nextleaf),
+        { NULL, NULL },
+    }, libs[] = {
+        ENTRY(append),
+        ENTRY(insert),
+        ENTRY(setchildren),
+        ENTRY(removeself),
+        { NULL, NULL }
+    }, libs_meta[] = {
+        ENTRY(__ipairs),
+        ENTRY(__len),
+        ENTRY(__pairs),
+#undef  ENTRY
+        { NULL, NULL }
+    };
+    lbind_newclass_meta(L, "node", libs, NULL, &lbT_Node);
+    lbind_setaccessor(L, libs_getter, NULL, &lbT_Node);
+    return 1;
+}
 
 LUALIB_API int luaopen_event(lua_State *L) {
     luaL_Reg libs[] = {
@@ -194,10 +292,10 @@ LUALIB_API int luaopen_event(lua_State *L) {
         ENTRY(connect),
         ENTRY(disconnect),
         ENTRY(emit),
-#undef  ENTRY
         { NULL, NULL }
     }, libs_meta[] = {
         { "__call", Levent_emit },
+#undef  ENTRY
         { NULL, NULL }
     };
     lbind_newenum(L, "event name", event_names, &lbE_EventNames);
@@ -218,5 +316,5 @@ LUALIB_API int luaopen_bridge(lua_State *L) {
 
 /* cc: flags+='-s -O2 -mdll -DLUA_BUILD_AS_DLL'
  * cc: libs+='d:/lua52/lua52.dll' run='lua test.lua'
- * cc: input+='lsevent.c lbind/lbind.c' output='event.dll'
+ * cc: input+='lsnode.c lsevent.c lbind/lbind.c' output='event.dll'
  */

@@ -10,14 +10,10 @@
 #include "lsnode.h"
 
 typedef struct ls_LuaNode ls_LuaNode;
-typedef struct ls_LuaEventSlot ls_LuaEventSlot;
 
 
-ls_LuaNode      *lsL_node_new  (lua_State *L, size_t nodesize);
-ls_LuaEventSlot *lsL_event_new (lua_State *L, size_t slotsize);
-
-ls_Node      *lsL_node (ls_LuaNode *node);
-ls_EventSlot *lsL_slot (ls_LuaEventSlot *event);
+ls_LuaNode *lsL_node_new (lua_State *L, size_t nodesize);
+ls_Node    *lsL_node     (ls_LuaNode *node);
 
 void lsL_event_register   (lua_State *L, ls_EventSignal *signal);
 void lsL_event_unregister (lua_State *L, ls_EventSignal *signal);

@@ -5,10 +5,8 @@
 #include <lua.h>
 #include <lauxlib.h>
 
-
 #define LB_API      LUA_API
 #define LBLIB_API   LUALIB_API
-
 
 #if LUA_VERSION_NUM < 502
 #  define luaL_newlibtable(L,l)	\
@@ -21,12 +19,9 @@ LUALIB_API void luaL_setfuncs (lua_State *L, luaL_Reg *l, int nup);
 #endif /* LUA_VERSION_NUM */
 
 
-/* lbind base information */
+/* lbind runtime */
 
-typedef struct lbind_Base {
-    const char *name;
-    int flags;
-} lbind_Base;
+LUALIB_API int luaopen_lbind (lua_State *L);
 
 
 /* lbind internal max alignment */
@@ -36,11 +31,6 @@ typedef struct lbind_Base {
 #endif
 
 typedef LBIND_MAXALIGN lbind_MaxAlign;
-
-
-/* lbind runtime */
-
-LUALIB_API int luaopen_lbind (lua_State *L);
 
 
 /* lbind class install */
@@ -72,7 +62,8 @@ typedef struct lbind_Type lbind_Type;
 typedef void *lbind_Cast(lua_State *L, int idx, const lbind_Type *to_type);
 
 struct lbind_Type {
-    lbind_Base base;
+    const char *name;
+    int flags;
     lbind_Cast *cast;
     lbind_Type **bases;
 };
@@ -121,8 +112,6 @@ LB_API void *lbind_new        (lua_State *L, size_t objsize, const lbind_Type *t
 LB_API void  lbind_register   (lua_State *L, const void *p, const lbind_Type *t);
 LB_API void *lbind_unregister (lua_State *L, int idx);
 
-
-
 #define lbind_optobject(L,idx,defs,t) \
     (lua_isnoneornil((L),(idx)) ? (defs) : lbind_check((L),(idx),(t)))
 
@@ -140,7 +129,7 @@ typedef struct lbind_EnumItem {
 } lbind_EnumItem;
 
 typedef struct lbind_Enum {
-    lbind_Base base;
+    const char *name;
     int lastn;
     lbind_EnumItem *enums;
 } lbind_Enum;
@@ -157,6 +146,8 @@ LB_API int lbind_checkenum (lua_State *L, int idx, lbind_Enum *et);
 LB_API int lbind_pushmask  (lua_State *L, int evalue, lbind_Enum *et);
 LB_API int lbind_testmask  (lua_State *L, int idx, lbind_Enum *et);
 LB_API int lbind_checkmask (lua_State *L, int idx, lbind_Enum *et);
+
+LB_API int lbind_getenumtable (lua_State *L, const lbind_Enum *et);
 
 #define lbind_optenum(L,idx,defs,t) \
     (lua_isnoneornil((L),(idx)) ? (defs) : lbind_checkenum((L),(idx),(t)))
