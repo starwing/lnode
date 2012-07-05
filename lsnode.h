@@ -17,6 +17,8 @@ void ls_append (ls_Node *self, ls_Node *newNode);
 void ls_insert (ls_Node *self, ls_Node *newNode);
 
 void ls_setchildren (ls_Node *self, ls_Node *children);
+void ls_appendchild (ls_Node *self, ls_Node *newNode);
+void ls_insertchild (ls_Node *self, ls_Node *newNode);
 void ls_removeself  (ls_Node *self);
 
 int      ls_type        (ls_Node *self);

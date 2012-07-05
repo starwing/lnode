@@ -2,6 +2,10 @@
 #include "lsbridge.h"
 #include "lbind/lbind.h"
 
+
+#include <assert.h>
+
+
 LBLIB_API lbind_Type lbT_Node;
 LBLIB_API lbind_Type lbT_EventSignal;
 LBLIB_API lbind_Type lbT_AttrHolder;
@@ -9,6 +13,75 @@ LBLIB_API lbind_Enum lbE_EventNames;
 
 
 /* node exported functions */
+
+struct ls_LuaNode {
+    ls_Node base;
+    int n;
+};
+
+ls_LuaNode *lsL_node_new(lua_State *L, int type, size_t nodesize) {
+    ls_LuaNode *node = lbind_new(L, sizeof(ls_LuaNode) + sizeof(nodesize), &lbT_Node);
+    ls_initnode(&node->base, type);
+    node->n = 0;
+    return node + 1;
+}
+
+ls_Node *lsL_node(ls_LuaNode *node) {
+    return &(node - 1)->base;
+}
+
+void lsL_node_setuservalue(lua_State *L, int idx) {
+    /* stack: uservalue */
+    ls_LuaNode *node = (ls_LuaNode*)lbind_test(L, idx, &lbT_Node);
+    int pos = 1;
+    if (idx < 0) idx += lua_gettop(L) + 1;
+#ifndef NDEBUG
+    assert(node);
+    lua_getuservalue(L, idx);
+    assert(lua_isnil(L, -1));
+    lua_pop(L, 1);
+#endif
+    for (;; ++pos) {
+        ls_Node *newnode;
+        lua_rawgeti(L, -1, pos); /* uservalue->1 */
+        if (lua_isnil(L, -1)) { lua_pop(L, 1); break; }
+        newnode = (ls_Node*)lbind_test(L, -1, &lbT_Node);
+        if (newnode == NULL)
+            luaL_error(L, "node expected in table index %d, got %s",
+                    pos, luaL_typename(L, -1));
+        ls_appendchild(&node->base, newnode);
+        ++node->n;
+        lua_pushvalue(L, idx); /* 2 */
+        lua_setfield(L, -2, "parent"); /* 2->1 */
+        lua_pop(L, 1); /* (1) */
+    }
+    lua_pushvalue(L, -1); /* uservalue->1 */
+    lua_setuservalue(L, idx); /* (1) */
+    lua_rawgeti(L, -1, pos);
+    while (lua_next(L, -2)) {
+        if (lua_type(L, -2) == LUA_TSTRING) {
+            lua_pushvalue(L, -2);
+            lua_insert(L, -2);
+            lua_settable(L, idx);
+        }
+        else
+            lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+}
+
+static int Lnode_new(lua_State *L) {
+    lsL_node_new(L, 0, 0);
+    if (lua_istable(L, 1)) {
+        lua_pushvalue(L, 1);
+        lsL_node_setuservalue(L, -2);
+    }
+    return 1;
+}
+
+static int Lnode_delete(lua_State *L) {
+    return 0;
+}
 
 static int Lnode_type(lua_State *L) {
     ls_Node *node = (ls_Node*)lbind_check(L, 1, &lbT_Node);
@@ -35,32 +108,115 @@ GETTER_FUNC(nextleaf)
 
 #undef GETTER_FUNC
 
+static void tinsert(lua_State *L, int pos, int count, int n) {
+    int i;
+    for (i = n; i >= pos; --i) {
+        lua_rawgeti(L, -1, i);
+        lua_rawseti(L, -2, i+count);
+    }
+}
+
+static void tremove(lua_State *L, int pos, int count, int n) {
+    int i;
+    for (i = pos; i <= n; ++i) {
+        lua_rawgeti(L, -1, i+count);
+        lua_rawseti(L, -2, i);
+    }
+}
+
+static int get_pos(lua_State *L, int def_pos, int *pidx, int n) {
+    int pos;
+    *pidx = 3;
+    if ((pos = lua_tonumber(L, 2)) == 0 && !lua_isnumber(L, 2))
+        pos = def_pos, *pidx = 2;
+    if (pos < 0 && -pos <= n)
+        pos += n + 1;
+    if (def_pos == 1 ? pos < 1 || pos > n + 1
+                     : pos < 0 || pos > n) {
+        lua_pushfstring(L, "node index %d out of bound 1~%d", pos, n);
+        return luaL_argerror(L, 2, lua_tostring(L, -1));
+    }
+    return pos;
+}
+
 static int Lnode_append(lua_State *L) {
-    ls_Node *node = (ls_Node*)lbind_check(L, 1, &lbT_Node);
+    ls_LuaNode *node = (ls_LuaNode*)lbind_check(L, 1, &lbT_Node);
+    ls_Node *child;
     int i, top = lua_gettop(L);
-    for (i = 2; i <= top; ++i) {
+    int pos = get_pos(L, node->n, &i, node->n);
+    lua_getuservalue(L, 1);
+    if (ls_firstchild(&node->base) == NULL)
+        child = NULL;
+    else {
+        lua_rawgeti(L, -1, pos);
+        child = (ls_Node*)lbind_object(L, -1);
+        tinsert(L, pos+1, top - i + 1, node->n);
+    }
+    for (; i <= top; ++i, ++node->n) {
         ls_Node *newnode = (ls_Node*)lbind_check(L, i, &lbT_Node);
-        ls_append(node, newnode);
+        if (child == NULL)
+            ls_appendchild(&node->base, newnode);
+        else
+            ls_append(child, newnode);
+        child = newnode;
+        lua_pushvalue(L, 1);
+        lua_setfield(L, i, "parent");
+        lua_pushvalue(L, i);
+        lua_rawseti(L, -2, ++pos);
     }
     lua_settop(L, 1);
     return 1;
 }
 
 static int Lnode_insert(lua_State *L) {
-    ls_Node *node = (ls_Node*)lbind_check(L, 1, &lbT_Node);
+    ls_LuaNode *node = (ls_LuaNode*)lbind_check(L, 1, &lbT_Node);
+    ls_Node *child;
     int i, top = lua_gettop(L);
-    for (i = 2; i <= top; ++i) {
+    int pos = get_pos(L, 1, &i, node->n);
+    lua_getuservalue(L, 1);
+    if (ls_firstchild(&node->base) == NULL)
+        child = NULL;
+    else {
+        lua_rawgeti(L, -1, pos);
+        child = (ls_Node*)lbind_object(L, -1);
+        tinsert(L, pos, top - i + 1, node->n);
+    }
+    for (; i <= top; ++i, ++node->n) {
         ls_Node *newnode = (ls_Node*)lbind_check(L, i, &lbT_Node);
-        ls_insert(node, newnode);
+        if (child == NULL)
+            ls_insertchild(&node->base, child = newnode);
+        else
+            ls_insert(child, newnode);
+        lua_pushvalue(L, 1);
+        lua_setfield(L, i, "parent");
+        lua_pushvalue(L, i);
+        lua_rawseti(L, -2, ++pos);
     }
     lua_settop(L, 1);
     return 1;
 }
 
-static int Lnode_setchildren(lua_State *L) {
-    ls_Node *node = (ls_Node*)lbind_check(L, 1, &lbT_Node);
-    ls_Node *children = (ls_Node*)lbind_check(L, 2, &lbT_Node);
-    ls_setchildren(node, children);
+static int Lnode_remove(lua_State *L) {
+    ls_LuaNode *node = (ls_LuaNode*)lbind_check(L, 1, &lbT_Node);
+    ls_Node *child;
+    int i, pos = get_pos(L, node->n, &i, node->n);
+    int count = luaL_optint(L, 3, 1);
+    lua_getuservalue(L, 1);
+    lua_rawgeti(L, -1, pos);
+    child = (ls_Node*)lbind_object(L, -1);
+    if (child) {
+        for (i = 0; i < count; ++i) {
+            ls_Node *next = ls_nextsibling(child);
+            ls_removeself(child);
+            child = next;
+            lua_rawgeti(L, -2, pos+i);
+            lua_pushnil(L);
+            lua_setfield(L, -2, "parent");
+            lua_pop(L, 1);
+        }
+        tremove(L, pos, count, node->n);
+        node->n -= count;
+    }
     lua_settop(L, 1);
     return 1;
 }
@@ -72,9 +228,77 @@ static int Lnode_removeself(lua_State *L) {
     return 1;
 }
 
-static int Lnode___len(lua_State *L) { return 0; }
-static int Lnode___ipairs(lua_State *L) { return 0; }
-static int Lnode___pairs(lua_State *L) { return 0; }
+static int Lnode___newindex(lua_State *L) {
+    ls_LuaNode *node = (ls_LuaNode*)lbind_check(L, 1, &lbT_Node);
+    int idx;
+    if ((idx = lua_tonumber(L, 0)) != 0 || lua_isnumber(L, 1)) {
+        ls_Node *newnode = (ls_Node*)lbind_check(L, 3, &lbT_Node);
+        if (idx < 0 && -idx <= node->n)
+            idx += node->n + 1;
+        if (idx < 0 || idx > node->n + 1)
+            return luaL_error(L, "index %d out of bound 1~%d", idx, node->n);
+        lua_getuservalue(L, 1);
+        if (idx == node->n + 1)
+            ls_appendchild(&node->base, newnode);
+        else {
+            ls_Node *prev;
+            lua_rawgeti(L, -1, idx);
+            prev = (ls_Node*)lbind_object(L, -1);
+            if (prev) ls_append(&node->base, newnode);
+            lua_pushnil(L);
+            lua_setfield(L, -2, "parent");
+        }
+        lua_pushvalue(L, 1);
+        lua_setfield(L, 3, "parent");
+    }
+    else {
+        lua_pushvalue(L, lua_upvalueindex(1));
+        lua_insert(L, 1);
+        lua_call(L, 3, 1);
+    }
+    return 1;
+}
+
+static int Lnode___index(lua_State *L) {
+    ls_LuaNode *node = (ls_LuaNode*)lbind_check(L, 1, &lbT_Node);
+    int idx;
+    if ((idx = lua_tonumber(L, 2)) != 0 || lua_isnumber(L, 2)) {
+        if (idx < 0 && -idx <= node->n)
+            idx += node->n + 1;
+        lua_getuservalue(L, 1);
+        lua_rawgeti(L, -1, idx);
+    }
+    else {
+        lua_pushvalue(L, lua_upvalueindex(1));
+        lua_insert(L, 1);
+        lua_call(L, 2, 1);
+    }
+    return 1;
+}
+
+static int Lnode___len(lua_State *L) {
+    ls_LuaNode *node = (ls_LuaNode*)lbind_check(L, 1, &lbT_Node);
+    lua_pushinteger(L, node->n);
+    return 1;
+}
+
+static int ipairsaux (lua_State *L) {
+    int i = luaL_checkint(L, 2);
+    if (lua_istable(L, 1)) {
+        i++;  /* next value */
+        lua_pushinteger(L, i);
+        lua_rawgeti(L, 1, i);
+        return (lua_isnil(L, -1)) ? 1 : 2;
+    }
+    return 0;
+}
+
+static int Lnode___ipairs(lua_State *L) {
+    lua_getuservalue(L, 1);
+    lua_pushcfunction(L, ipairsaux);
+    lua_pushinteger(L, 0);
+    return 3;
+}
 
 
 /* event exported functions */
@@ -266,20 +490,30 @@ LUALIB_API int luaopen_node(lua_State *L) {
         ENTRY(nextleaf),
         { NULL, NULL },
     }, libs[] = {
+        ENTRY(new), /* for test */
+        ENTRY(delete),
         ENTRY(append),
         ENTRY(insert),
-        ENTRY(setchildren),
+        ENTRY(remove),
         ENTRY(removeself),
         { NULL, NULL }
     }, libs_meta[] = {
         ENTRY(__ipairs),
         ENTRY(__len),
-        ENTRY(__pairs),
 #undef  ENTRY
         { NULL, NULL }
     };
     lbind_newclass_meta(L, "node", libs, NULL, &lbT_Node);
     lbind_setaccessor(L, libs_getter, NULL, &lbT_Node);
+    if (lbind_getmetatable(L, &lbT_Node)) {
+        lua_getfield(L, -1, "__index");
+        lua_pushcclosure(L, Lnode___index, 1);
+        lua_setfield(L, -2, "__index");
+        lua_getfield(L, -1, "__newindex");
+        lua_pushcclosure(L, Lnode___newindex, 1);
+        lua_setfield(L, -2, "__newindex");
+        lua_pop(L, 1);
+    }
     return 1;
 }
 
@@ -315,6 +549,6 @@ LUALIB_API int luaopen_bridge(lua_State *L) {
 }
 
 /* cc: flags+='-s -O2 -mdll -DLUA_BUILD_AS_DLL'
- * cc: libs+='d:/lua52/lua52.dll' run='lua test.lua'
- * cc: input+='lsnode.c lsevent.c lbind/lbind.c' output='event.dll'
+ * cc: libs+='d:/lua52/lua52.dll' run='lua test_node.lua'
+ * cc: input+='lsnode.c lsevent.c lbind/lbind.c' output='node.dll'
  */

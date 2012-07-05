@@ -12,8 +12,10 @@
 typedef struct ls_LuaNode ls_LuaNode;
 
 
-ls_LuaNode *lsL_node_new (lua_State *L, size_t nodesize);
+ls_LuaNode *lsL_node_new (lua_State *L, int type, size_t nodesize);
 ls_Node    *lsL_node     (ls_LuaNode *node);
+
+void lsL_node_setuservalue (lua_State *L, int idx);
 
 void lsL_event_register   (lua_State *L, ls_EventSignal *signal);
 void lsL_event_unregister (lua_State *L, ls_EventSignal *signal);
@@ -27,5 +29,8 @@ int  lsL_get_attrs_table (lua_State *L, ls_AttrHolder *holder);
 void lsL_set_attrs_table (lua_State *L, int idx, ls_AttrHolder *holder);
 
 LUALIB_API int luaopen_bridge(lua_State *L);
+LUALIB_API int luaopen_node(lua_State *L);
+LUALIB_API int luaopen_event(lua_State *L);
+LUALIB_API int luaopen_attrs(lua_State *L);
 
 #endif /* lsbridge_h */

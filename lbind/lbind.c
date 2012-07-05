@@ -335,6 +335,27 @@ static int newlocal_helper(lua_State *L) {
     return lua_gettop(L);
 }
 
+static int Ltostring(lua_State *L) {
+    lbind_tolstring(L, 1, NULL);
+    return 1;
+}
+
+static int Lgc(lua_State *L) {
+    lbind_Object *obj = (lbind_Object*)lua_touserdata(L, 1);
+    if (obj != NULL && check_size(L, 1)) {
+        if ((obj->o.flags & LBC_GC) != 0) {
+            lua_getfield(L, 1, "delete");
+            if (!lua_isnil(L, -1)) {
+                lua_pushvalue(L, 1);
+                lua_call(L, 1, 0);
+            }
+            if ((obj->o.flags & LBC_GC) != 0)
+                lbind_unregister(L, 1);
+        }
+    }
+    return 0;
+}
+
 static int Lnewindex(lua_State *L) {
     lbind_Object *obj = (lbind_Object*)lua_touserdata(L, 1);
     if (obj != NULL
@@ -368,43 +389,32 @@ static int Lnewindex(lua_State *L) {
     return 0;
 }
 
-static int Lgc(lua_State *L) {
-    lbind_Object *obj = (lbind_Object*)lua_touserdata(L, 1);
-    if (obj != NULL && check_size(L, 1)) {
-        if ((obj->o.flags & LBC_GC) != 0) {
-            lua_getfield(L, 1, "delete");
-            if (!lua_isnil(L, -1)) {
-                lua_pushvalue(L, 1);
-                lua_call(L, 1, 0);
-            }
-            if ((obj->o.flags & LBC_GC) != 0)
-                lbind_unregister(L, 1);
-        }
-    }
-    return 0;
-}
-
-static int Ltostring(lua_State *L) {
-    lbind_tolstring(L, 1, NULL);
-    return 1;
-}
-
 static int Lindex(lua_State *L) {
     int i;
     lbind_Object *obj = (lbind_Object*)lua_touserdata(L, 1);
-    if (obj != NULL
-            && (obj->o.flags & LBC_HASGETTER) != 0
-            && lua_getmetatable(L, 1)) { /* 1 */
-        lua_CFunction getter;
-        /* getter table */
-        lbM_getfield(L, gettertable); /* 2 */
+    if (obj != NULL) {
+        /* find in uservalue table */
+        lua_getuservalue(L, 1);
         if (!lua_isnil(L, -1)) {
-            lua_pushvalue(L, 2); /* 3 */
-            lua_rawget(L, -2); /* 3->3 */
-            getter = lua_tocfunction(L, -1);
-            lua_pop(L, 3);
-            if (getter != NULL)
-                return getter(L);
+            lua_pushvalue(L, 2);
+            lua_rawget(L, -2);
+        }
+        if (!lua_isnil(L, -1))
+            return 1;
+        lua_pop(L, 2);
+        if ((obj->o.flags & LBC_HASGETTER) != 0
+                && lua_getmetatable(L, 1)) { /* 1 */
+            lua_CFunction getter;
+            /* getter table */
+            lbM_getfield(L, gettertable); /* 2 */
+            if (!lua_isnil(L, -1)) {
+                lua_pushvalue(L, 2); /* 3 */
+                lua_rawget(L, -2); /* 3->3 */
+                getter = lua_tocfunction(L, -1);
+                lua_pop(L, 3);
+                if (getter != NULL)
+                    return getter(L);
+            }
         }
     }
     /* find in libtable/superlibtable */
@@ -416,21 +426,12 @@ static int Lindex(lua_State *L) {
                 continue;
             }
             lbM_getfield(L, libtable);
-            lua_insert(L, lua_upvalueindex(i));
+            lua_replace(L, lua_upvalueindex(i));
         }
         lua_pushvalue(L, 2);
         lua_rawget(L, lua_upvalueindex(i));
         if (!lua_isnil(L, -1))
             return 1;
-    }
-    /* find in uservalue table */
-    if (lua_isuserdata(L, 1)) {
-        lua_getuservalue(L, 1);
-        if (!lua_isnil(L, -1)) {
-            lua_pushvalue(L, 2);
-            lua_rawget(L, -2);
-        }
-        return 1; /* nil or value in uservalue table */
     }
     return 0;
 }

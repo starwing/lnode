@@ -22,35 +22,55 @@ void ls_initnode(ls_Node *self, int type) {
 void ls_append(ls_Node *self, ls_Node *newNode) {
     if (newNode->next_sibling != newNode) ls_removeself(newNode);
 
-    newNode->prev_sibling = self->prev_sibling;
-    newNode->next_sibling = self;
-    self->prev_sibling->next_sibling = newNode;
-    self->prev_sibling = newNode;
+    newNode->next_sibling = self->next_sibling;
+    newNode->prev_sibling = self;
+    self->next_sibling->prev_sibling = newNode;
+    self->next_sibling = newNode;
 
     newNode->parent = self->parent;
 }
 
 void ls_insert(ls_Node *self, ls_Node *newNode) {
-    ls_append(self, newNode);
+    ls_append(self->prev_sibling, newNode);
     if (self->parent && self->parent->children == self)
         self->parent->children = newNode;
 }
 
 void ls_setchildren(ls_Node *self, ls_Node *newNode) {
-    ls_Node *i;
-    if (self->children != NULL) {
-        self->children->parent = NULL;
-        list_for_each (i, self->children)
-            i->parent = NULL;
-    }
-    if (newNode) {
-        if (newNode->parent)
-            newNode->parent->children = NULL;
-        newNode->parent = self;
-        list_for_each (i, newNode)
-            i->parent = self;
+    if (newNode->parent != self) {
+        ls_Node *i;
+        if (self->children != NULL) {
+            self->children->parent = NULL;
+            list_for_each (i, self->children)
+                i->parent = NULL;
+        }
+        if (newNode) {
+            if (newNode->parent)
+                newNode->parent->children = NULL;
+            newNode->parent = self;
+            list_for_each (i, newNode)
+                i->parent = self;
+        }
     }
     self->children = newNode;
+}
+
+void ls_appendchild(ls_Node *self, ls_Node *newNode) {
+    if (self->children != NULL)
+        ls_append(self->children->prev_sibling, newNode);
+    else {
+        if (newNode->next_sibling != newNode) ls_removeself(newNode);
+        self->children = newNode;
+    }
+}
+
+void ls_insertchild(ls_Node *self, ls_Node *newNode) {
+    if (self->children != NULL)
+        ls_insert(self->children, newNode);
+    else {
+        if (newNode->next_sibling != newNode) ls_removeself(newNode);
+        self->children = newNode;
+    }
 }
 
 void ls_removeself(ls_Node *self) {
