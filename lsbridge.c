@@ -126,9 +126,10 @@ static void tremove(lua_State *L, int pos, int count, int n) {
 
 static int get_pos(lua_State *L, int def_pos, int *pidx, int n) {
     int pos;
-    *pidx = 3;
+    *pidx = 2;
     if ((pos = lua_tonumber(L, 2)) == 0 && !lua_isnumber(L, 2))
-        pos = def_pos, *pidx = 2;
+        return def_pos;
+    *pidx = 3;
     if (pos < 0 && -pos <= n)
         pos += n + 1;
     if (def_pos == 1 ? pos < 1 || pos > n + 1
@@ -141,15 +142,14 @@ static int get_pos(lua_State *L, int def_pos, int *pidx, int n) {
 
 static int Lnode_append(lua_State *L) {
     ls_LuaNode *node = (ls_LuaNode*)lbind_check(L, 1, &lbT_Node);
-    ls_Node *child;
+    ls_Node *child = NULL;
     int i, top = lua_gettop(L);
     int pos = get_pos(L, node->n, &i, node->n);
-    lua_getuservalue(L, 1);
-    if (ls_firstchild(&node->base) == NULL)
-        child = NULL;
-    else {
+    lua_getuservalue(L, 1); /* 1 */
+    if (ls_firstchild(&node->base) != NULL) {
         lua_rawgeti(L, -1, pos);
         child = (ls_Node*)lbind_object(L, -1);
+        lua_pop(L, 1);
         tinsert(L, pos+1, top - i + 1, node->n);
     }
     for (; i <= top; ++i, ++node->n) {
@@ -159,10 +159,10 @@ static int Lnode_append(lua_State *L) {
         else
             ls_append(child, newnode);
         child = newnode;
-        lua_pushvalue(L, 1);
-        lua_setfield(L, i, "parent");
-        lua_pushvalue(L, i);
-        lua_rawseti(L, -2, ++pos);
+        lua_pushvalue(L, 1); /* 2 */
+        lua_setfield(L, i, "parent"); /* 2->i */
+        lua_pushvalue(L, i); /* 2 */
+        lua_rawseti(L, -2, ++pos); /* 2->1 */
     }
     lua_settop(L, 1);
     return 1;
@@ -170,13 +170,11 @@ static int Lnode_append(lua_State *L) {
 
 static int Lnode_insert(lua_State *L) {
     ls_LuaNode *node = (ls_LuaNode*)lbind_check(L, 1, &lbT_Node);
-    ls_Node *child;
+    ls_Node *child = NULL;
     int i, top = lua_gettop(L);
     int pos = get_pos(L, 1, &i, node->n);
     lua_getuservalue(L, 1);
-    if (ls_firstchild(&node->base) == NULL)
-        child = NULL;
-    else {
+    if (ls_firstchild(&node->base) != NULL) {
         lua_rawgeti(L, -1, pos);
         child = (ls_Node*)lbind_object(L, -1);
         tinsert(L, pos, top - i + 1, node->n);
@@ -231,15 +229,17 @@ static int Lnode_removeself(lua_State *L) {
 static int Lnode___newindex(lua_State *L) {
     ls_LuaNode *node = (ls_LuaNode*)lbind_check(L, 1, &lbT_Node);
     int idx;
-    if ((idx = lua_tonumber(L, 0)) != 0 || lua_isnumber(L, 1)) {
+    if ((idx = lua_tonumber(L, 2)) != 0 || lua_isnumber(L, 2)) {
         ls_Node *newnode = (ls_Node*)lbind_check(L, 3, &lbT_Node);
         if (idx < 0 && -idx <= node->n)
             idx += node->n + 1;
         if (idx < 0 || idx > node->n + 1)
             return luaL_error(L, "index %d out of bound 1~%d", idx, node->n);
         lua_getuservalue(L, 1);
-        if (idx == node->n + 1)
+        if (idx == node->n + 1) {
             ls_appendchild(&node->base, newnode);
+            ++node->n;
+        }
         else {
             ls_Node *prev;
             lua_rawgeti(L, -1, idx);
@@ -248,8 +248,10 @@ static int Lnode___newindex(lua_State *L) {
             lua_pushnil(L);
             lua_setfield(L, -2, "parent");
         }
+        lua_pushvalue(L, 3);
+        lua_rawseti(L, -2, idx);
         lua_pushvalue(L, 1);
-        lua_setfield(L, 3, "parent");
+        lua_setfield(L, -2, "parent");
     }
     else {
         lua_pushvalue(L, lua_upvalueindex(1));
@@ -294,8 +296,9 @@ static int ipairsaux (lua_State *L) {
 }
 
 static int Lnode___ipairs(lua_State *L) {
-    lua_getuservalue(L, 1);
+    lbind_check(L, 1, &lbT_Node);
     lua_pushcfunction(L, ipairsaux);
+    lua_getuservalue(L, 1);
     lua_pushinteger(L, 0);
     return 3;
 }
