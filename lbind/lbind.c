@@ -696,7 +696,7 @@ static int parse_ident(lua_State *L, const char *p, int *value) {
             ++p;
         lua_pushlstring(L, begin, p - begin);
         lua_rawget(L, -2);
-        valid = (*value = lua_tonumber(L, -1)) != 0 || lua_isnumber(L, -1);
+        valid = (*value = (int)lua_tonumber(L, -1)) != 0 || lua_isnumber(L, -1);
         lua_pop(L, 1);
         if (!valid) {
             lua_pushlstring(L, begin, p - begin);
@@ -767,7 +767,7 @@ int lbind_pushenum(lua_State *L, const char *name, lbind_Enum *et) {
     lua_pushvalue(L, -1); /* 2->3 */
     lua_rawget(L, -3); /* 3->3 */
     lua_remove(L, -2); /* (1) */
-    if ((res = lua_tonumber(L, -1)) == 0 && !lua_isnumber(L, -1)) {
+    if ((res = (int)lua_tonumber(L, -1)) == 0 && !lua_isnumber(L, -1)) {
         lua_pop(L, 1); /* (3) */
         return -1;
     }
@@ -789,7 +789,7 @@ static int toenum(lua_State *L, int idx, lbind_Enum *et, int mask, int check) {
         else {
             lua_pushvalue(L, idx); /* idx->2 */
             lua_rawget(L, -2); /* 2->2 */
-            success = (value = lua_tonumber(L, -1)) != 0 || lua_isnumber(L, -1);
+            success = (value = (int)lua_tonumber(L, -1)) != 0 || lua_isnumber(L, -1);
             lua_pop(L, 1); /* (2) */
             if (check && !success)
                 return luaL_error(L, "'%s' is not valid %s", str, et->name);

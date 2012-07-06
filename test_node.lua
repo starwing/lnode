@@ -5,8 +5,7 @@ local n = node {
         node(),
         node(),
     },
-    node {
-    },
+    node { },
 }
 print(#n)
 
@@ -28,3 +27,20 @@ print(#n)
 
 print_nodes(n)
 
+n:remove(2)
+print(#n)
+
+print_nodes(n)
+
+local nn = node {node(), node(), node()}
+n:append(nn)
+
+print "after append"
+print_nodes(n)
+
+nn:removeself()
+
+print "after removeself"
+print_nodes(n)
+
+print "end"

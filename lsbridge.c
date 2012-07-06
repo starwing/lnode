@@ -14,13 +14,15 @@ LBLIB_API lbind_Enum lbE_EventNames;
 
 /* node exported functions */
 
+#define NODE ls_LuaNode *node = (ls_LuaNode*)lbind_check(L, 1, &lbT_Node)
+
 struct ls_LuaNode {
     ls_Node base;
     int n;
 };
 
 ls_LuaNode *lsL_node_new(lua_State *L, int type, size_t nodesize) {
-    ls_LuaNode *node = lbind_new(L, sizeof(ls_LuaNode) + sizeof(nodesize), &lbT_Node);
+    ls_LuaNode *node = (ls_LuaNode*)lbind_new(L, sizeof(ls_LuaNode) + sizeof(nodesize), &lbT_Node);
     ls_initnode(&node->base, type);
     node->n = 0;
     return node + 1;
@@ -50,6 +52,7 @@ void lsL_node_setuservalue(lua_State *L, int idx) {
             luaL_error(L, "node expected in table index %d, got %s",
                     pos, luaL_typename(L, -1));
         ls_appendchild(&node->base, newnode);
+        assert(ls_parent(newnode) == &node->base);
         ++node->n;
         lua_pushvalue(L, idx); /* 2 */
         lua_setfield(L, -2, "parent"); /* 2->1 */
@@ -84,15 +87,15 @@ static int Lnode_delete(lua_State *L) {
 }
 
 static int Lnode_type(lua_State *L) {
-    ls_Node *node = (ls_Node*)lbind_check(L, 1, &lbT_Node);
-    lua_pushinteger(L, ls_type(node));
+    NODE;
+    lua_pushinteger(L, ls_type(&node->base));
     return 1;
 }
 
 #define GETTER_FUNC(name) \
     static int Lnode_##name(lua_State *L) { \
-        ls_Node *node = (ls_Node*)lbind_check(L, 1, &lbT_Node); \
-        return lbind_retrieve(L, ls_##name(node)); \
+        NODE; \
+        return lbind_retrieve(L, ls_##name(&node->base)); \
     }
 
 GETTER_FUNC(parent)
@@ -127,7 +130,7 @@ static void tremove(lua_State *L, int pos, int count, int n) {
 static int get_pos(lua_State *L, int def_pos, int *pidx, int n) {
     int pos;
     *pidx = 2;
-    if ((pos = lua_tonumber(L, 2)) == 0 && !lua_isnumber(L, 2))
+    if ((pos = (int)lua_tonumber(L, 2)) == 0 && !lua_isnumber(L, 2))
         return def_pos;
     *pidx = 3;
     if (pos < 0 && -pos <= n)
@@ -141,7 +144,7 @@ static int get_pos(lua_State *L, int def_pos, int *pidx, int n) {
 }
 
 static int Lnode_append(lua_State *L) {
-    ls_LuaNode *node = (ls_LuaNode*)lbind_check(L, 1, &lbT_Node);
+    NODE;
     ls_Node *child = NULL;
     int i, top = lua_gettop(L);
     int pos = get_pos(L, node->n, &i, node->n);
@@ -149,6 +152,7 @@ static int Lnode_append(lua_State *L) {
     if (ls_firstchild(&node->base) != NULL) {
         lua_rawgeti(L, -1, pos);
         child = (ls_Node*)lbind_object(L, -1);
+        assert(child == NULL || ls_parent(child) == &node->base);
         lua_pop(L, 1);
         tinsert(L, pos+1, top - i + 1, node->n);
     }
@@ -158,6 +162,7 @@ static int Lnode_append(lua_State *L) {
             ls_appendchild(&node->base, newnode);
         else
             ls_append(child, newnode);
+        assert(ls_parent(newnode) == &node->base);
         child = newnode;
         lua_pushvalue(L, 1); /* 2 */
         lua_setfield(L, i, "parent"); /* 2->i */
@@ -169,7 +174,7 @@ static int Lnode_append(lua_State *L) {
 }
 
 static int Lnode_insert(lua_State *L) {
-    ls_LuaNode *node = (ls_LuaNode*)lbind_check(L, 1, &lbT_Node);
+    NODE;
     ls_Node *child = NULL;
     int i, top = lua_gettop(L);
     int pos = get_pos(L, 1, &i, node->n);
@@ -185,6 +190,7 @@ static int Lnode_insert(lua_State *L) {
             ls_insertchild(&node->base, child = newnode);
         else
             ls_insert(child, newnode);
+        assert(ls_parent(newnode) == &node->base);
         lua_pushvalue(L, 1);
         lua_setfield(L, i, "parent");
         lua_pushvalue(L, i);
@@ -195,22 +201,23 @@ static int Lnode_insert(lua_State *L) {
 }
 
 static int Lnode_remove(lua_State *L) {
-    ls_LuaNode *node = (ls_LuaNode*)lbind_check(L, 1, &lbT_Node);
+    NODE;
     ls_Node *child;
     int i, pos = get_pos(L, node->n, &i, node->n);
     int count = luaL_optint(L, 3, 1);
-    lua_getuservalue(L, 1);
-    lua_rawgeti(L, -1, pos);
-    child = (ls_Node*)lbind_object(L, -1);
-    if (child) {
+    lua_getuservalue(L, 1);  /* 1 */
+    lua_rawgeti(L, -1, pos); /* 2 */
+    if ((child = (ls_Node*)lbind_object(L, -1)) != NULL) {
+        lua_pop(L, 1); /* (2) */
         for (i = 0; i < count; ++i) {
             ls_Node *next = ls_nextsibling(child);
             ls_removeself(child);
+            assert(ls_parent(child) == NULL);
             child = next;
-            lua_rawgeti(L, -2, pos+i);
-            lua_pushnil(L);
-            lua_setfield(L, -2, "parent");
-            lua_pop(L, 1);
+            lua_rawgeti(L, -1, pos+i); /* 2 */
+            lua_pushnil(L); /* 3 */
+            lua_setfield(L, -2, "parent"); /* 3->2 */
+            lua_pop(L, 1); /* (2) */
         }
         tremove(L, pos, count, node->n);
         node->n -= count;
@@ -220,16 +227,33 @@ static int Lnode_remove(lua_State *L) {
 }
 
 static int Lnode_removeself(lua_State *L) {
-    ls_Node *node = (ls_Node*)lbind_check(L, 1, &lbT_Node);
-    ls_removeself(node);
+    NODE;
+    if (ls_parent(&node->base) != NULL) {
+        ls_Node *cur = ls_firstchild(ls_parent(&node->base));
+        int idx = 0;
+        while (++idx, cur != &node->base)
+            cur = ls_nextsibling(cur);
+        if (lbind_retrieve(L, ls_parent(&node->base))) { /* 1 */
+            lua_getuservalue(L, -1); /* 2 */
+            lua_rawgeti(L, -1, idx); /* 3 */
+            assert(lbind_object(L, -1) == &node->base);
+            lua_pushnil(L); /* 4 */
+            lua_setfield(L, -2, "parent"); /* 4->3 */
+            lua_pop(L, 1); /* (3) */
+            tremove(L, idx, 1, ((ls_LuaNode*)lbind_object(L, -2))->n);
+            lua_pop(L, 2); /* (2)(1) */
+        }
+        ls_removeself(&node->base);
+        assert(ls_parent(&node->base) == NULL);
+    }
     lua_settop(L, 1);
     return 1;
 }
 
 static int Lnode___newindex(lua_State *L) {
-    ls_LuaNode *node = (ls_LuaNode*)lbind_check(L, 1, &lbT_Node);
+    NODE;
     int idx;
-    if ((idx = lua_tonumber(L, 2)) != 0 || lua_isnumber(L, 2)) {
+    if ((idx = (int)lua_tonumber(L, 2)) != 0 || lua_isnumber(L, 2)) {
         ls_Node *newnode = (ls_Node*)lbind_check(L, 3, &lbT_Node);
         if (idx < 0 && -idx <= node->n)
             idx += node->n + 1;
@@ -262,9 +286,9 @@ static int Lnode___newindex(lua_State *L) {
 }
 
 static int Lnode___index(lua_State *L) {
-    ls_LuaNode *node = (ls_LuaNode*)lbind_check(L, 1, &lbT_Node);
+    NODE;
     int idx;
-    if ((idx = lua_tonumber(L, 2)) != 0 || lua_isnumber(L, 2)) {
+    if ((idx = (int)lua_tonumber(L, 2)) != 0 || lua_isnumber(L, 2)) {
         if (idx < 0 && -idx <= node->n)
             idx += node->n + 1;
         lua_getuservalue(L, 1);
@@ -279,7 +303,7 @@ static int Lnode___index(lua_State *L) {
 }
 
 static int Lnode___len(lua_State *L) {
-    ls_LuaNode *node = (ls_LuaNode*)lbind_check(L, 1, &lbT_Node);
+    NODE;
     lua_pushinteger(L, node->n);
     return 1;
 }
@@ -305,7 +329,7 @@ static int Lnode___ipairs(lua_State *L) {
 
 
 /* event exported functions */
- 
+
 typedef struct {
     lua_State *L;
     int nargs;
@@ -363,13 +387,13 @@ int lsL_event_emit(lua_State *L, ls_EventSignal *signal, int evtid, int args) {
 }
 
 static int Levent_new(lua_State *L) {
-    ls_EventSignal *signal = lbind_new(L, sizeof(ls_EventSignal), &lbT_EventSignal);
+    ls_EventSignal *signal = (ls_EventSignal*)lbind_new(L, sizeof(ls_EventSignal), &lbT_EventSignal);
     ls_event_initsignal(signal);
     return 1;
 }
 
 static int Levent_reset(lua_State *L) {
-    ls_EventSignal *signal = lbind_check(L, 1, &lbT_EventSignal);
+    ls_EventSignal *signal = (ls_EventSignal*)lbind_check(L, 1, &lbT_EventSignal);
     ls_event_reset(signal);
     lua_getuservalue(L, 1); /* 1 */
     if (!lua_isnil(L, -1)) {
@@ -418,7 +442,7 @@ static int get_evtname(lua_State *L, int check, int *pidx) {
 }
 
 static int Levent_connect(lua_State *L) {
-    ls_EventSignal *signal = lbind_check(L, 1, &lbT_EventSignal);
+    ls_EventSignal *signal = (ls_EventSignal*)lbind_check(L, 1, &lbT_EventSignal);
     Levent_Slot *slot;
     int i, idx, evtid, top = lua_gettop(L);
     evtid = get_evtname(L, ADDNEW, &idx);
@@ -462,7 +486,7 @@ static int Levent_disconnect(lua_State *L) {
 }
 
 static int Levent_emit(lua_State *L) {
-    ls_EventSignal *signal = lbind_check(L, 1, &lbT_EventSignal);
+    ls_EventSignal *signal = (ls_EventSignal*)lbind_check(L, 1, &lbT_EventSignal);
     int idx, evtid = get_evtname(L, CHECK, &idx), top;
     top = lua_gettop(L);
     if (lsL_event_emit(L, signal, evtid, top - idx + 1) != LUA_OK)
@@ -546,7 +570,6 @@ LUALIB_API int luaopen_bridge(lua_State *L) {
     static luaL_Reg libbridge[] = {
         { NULL, NULL }
     };
-
     luaL_newlib(L, libbridge);
     return 1;
 }

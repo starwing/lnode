@@ -61,6 +61,7 @@ void ls_appendchild(ls_Node *self, ls_Node *newNode) {
     else {
         if (newNode->next_sibling != newNode) ls_removeself(newNode);
         self->children = newNode;
+        newNode->parent = self;
     }
 }
 
@@ -70,6 +71,7 @@ void ls_insertchild(ls_Node *self, ls_Node *newNode) {
     else {
         if (newNode->next_sibling != newNode) ls_removeself(newNode);
         self->children = newNode;
+        newNode->parent = self;
     }
 }
 
